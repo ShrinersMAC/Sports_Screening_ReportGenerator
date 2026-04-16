@@ -40,6 +40,12 @@ SAMPLE_PATIENT = {
     "surgery_date": "2025-01-10"
 }
 
+# %% Hey Spencer
+
+# TODO
+
+# ---- Section 
+
 # Visits with dynamic knee valgus (DKV) and hip vs knee strategy measures
 # Each measure: mean, sd, norm_mean, norm_sd
 SAMPLE_VISITS = [
@@ -202,7 +208,7 @@ class PlotManager:
         n_cols = min(len(visits), 5)
 
         for r, measure in enumerate(measure_keys):
-            for c, visit in enumerate(visits[:5]):
+            for c, visit in enumerate(visits[:5]): # limit to 5
                 ax = fig.add_subplot(n_rows, n_cols, r * n_cols + c + 1)
                 vdate = visit["visit_date"]
                 data = visit[title_prefix.lower().replace(" ", "_")][measure]
