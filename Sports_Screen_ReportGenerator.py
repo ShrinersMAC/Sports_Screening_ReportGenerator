@@ -369,7 +369,8 @@ class ReportGenerator:
         self.plot_manager = plot_manager
         self.metrics_calc = metrics_calc
         self.styles = getSampleStyleSheet()
-
+        
+    # ---- For Spencer
     def generate_pdf(self, filename, patient_data, visits, tmp_dir="tmp_plots"):
         os.makedirs(tmp_dir, exist_ok=True)
 
@@ -468,6 +469,7 @@ class PatientReportApp(tk.Tk):
 
     def load_gcd_data(self):
         # need to use a data handler function to get data from the other class in a clean way
+        # ---- call function across classes
         gcd_data, py_data = self.data_handler.getData_dialog()
     
         if gcd_data:
@@ -613,6 +615,7 @@ class PatientReportApp(tk.Tk):
     # --------------------------------------------------------
     #  Plot Window
     # --------------------------------------------------------
+    # ---- For Spencer
     def show_preview_page(self, page_number):
         """Render the selected page into the preview window as a scaled image."""
         self.current_preview_page = page_number
@@ -703,6 +706,7 @@ class PatientReportApp(tk.Tk):
         if self.current_preview_page > 1:
             self.show_preview_page(self.current_preview_page - 1)
 
+    # ---- For Spencer
     def generate_preview_pages(self):
         """Generate matplotlib figures for all 3 pages."""
     
