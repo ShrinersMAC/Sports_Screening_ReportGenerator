@@ -28,23 +28,21 @@ from shared_utils.get_GCDdata import get_data as gcd
 # ============================================================
 #  Sample Data (for testing)
 # ============================================================
-SAMPLE_PATIENT = {
-    "name": "John Doe",
+Default_patient_info = {
+    "lastname": "Doe",
+    "firstname": "Jane",
     "id": "123456",
     "physician": "Dr. Smith",
     "injury": "ACL Tear",
     "injury_side": "Right",
-    "age": 28,
-    "dob": "1997-03-15",
+    "age": 12,
+    "dob": "2012-01-01",
     "therapist": "Jane Therapist",
-    "surgery_date": "2025-01-10"
+    "injury_date": "2019-12-01",
+    "surgery_date": "2020-01-01"
 }
 
-# %% Hey Spencer
-
-# TODO
-
-# ---- Section 
+# ---- Sample visit data 
 
 # Visits with dynamic knee valgus (DKV) and hip vs knee strategy measures
 # Each measure: mean, sd, norm_mean, norm_sd
@@ -87,6 +85,18 @@ SAMPLE_VISITS = [
     }
 ]
 
+# ---- RTS cut points
+cut_points = {
+    "dynamic_knee_valgus": {
+        "lateral_trunk_lean": {
+            "heel_touch":       "<=a10", # less than or equal to 10 degrees both directions - i.e. absolute value
+            "side_step_cut":    ">=-5",
+            "lateral_shuffle":  "<=+10",
+            "deceleration":     "<=a10",
+            "single_hop":       "<=a10"
+            }
+        }
+    }
 
 # ============================================================
 #  Get data and calculate metrics (placeholder)
@@ -112,6 +122,7 @@ class DataHandling:
         py_data  = []
 
         for path in file_paths:
+            filename = os.path.basename(path)
             if '.py' in path.lower():
                 try:
                     # Read the file contents
@@ -128,7 +139,7 @@ class DataHandling:
                                     }
                     
                     py_data.append({
-                        "file_path": path,
+                        "file_path": filename,
                         "data": py_dict
                     })
             
@@ -144,7 +155,7 @@ class DataHandling:
                     data_dict = gcd(path)
     
                     gcd_data.append({
-                        "file_path": path,
+                        "file_path": filename,
                         "data": data_dict
                     })
                     
@@ -199,7 +210,7 @@ class PlotManager:
     def __init__(self):
         pass
 
-    def plot_visit_data(self, fig, visits, measure_keys, title_prefix):
+    def plot_errbar_data(self, fig, visits, measure_keys, title_prefix):
         """
         measure_keys: list of measure names (rows)
         visits: list of visit dicts (columns up to 5)
@@ -235,7 +246,7 @@ class PlotManager:
 
         fig.suptitle(title_prefix, fontsize=12)
 
-    def create_dkv_figure(self, visits):
+    def dkv_errbar_figure(self, visits):
         measure_keys = [
             "max_knee_valgus_moment",
             "knee_abduction_angle",
@@ -244,11 +255,11 @@ class PlotManager:
             "knee_flexion_angle",
         ]
         fig = Figure(figsize=(8.5, 11))  # full page
-        self.plot_visit_data(fig, visits, measure_keys, "dynamic_knee_valgus")
+        self.plot_errbar_data(fig, visits, measure_keys, "dynamic_knee_valgus")
         fig.tight_layout(rect=[0, 0, 1, 0.95])
         return fig
 
-    def create_hks_figure(self, visits):
+    def hks_errbar_figure(self, visits):
         measure_keys = [
             "hip_flexion",
             "knee_flexion",
@@ -258,7 +269,7 @@ class PlotManager:
             "hip_knee_moment_ratio",
         ]
         fig = Figure(figsize=(8.5, 11))
-        self.plot_visit_data(fig, visits, measure_keys, "hip_knee_strategy")
+        self.plot_errbar_data(fig, visits, measure_keys, "hip_knee_strategy")
         fig.tight_layout(rect=[0, 0, 1, 0.95])
         return fig
 
@@ -290,73 +301,73 @@ class DataFormatter:
                 pass
 
         html = f"""
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>Patient Report</title>
-<style>
-.page {{
-  page-break-after: always;
-  padding: 20px;
-  font-family: Arial, sans-serif;
-}}
-.header {{
-  font-size: 12px;
-  border-bottom: 1px solid #000;
-  margin-bottom: 10px;
-}}
-.subheader {{
-  font-size: 10px;
-  border-bottom: 1px solid #000;
-  margin-bottom: 10px;
-}}
-</style>
-</head>
-<body>
-
-<div class="page">
-  <div class="header">
-    <p>Name: {patient_data.get("name","")} |
-       ID: {patient_data.get("id","")} |
-       Physician: {patient_data.get("physician","")} |
-       Injury: {patient_data.get("injury","")} ({patient_data.get("injury_side","")})</p>
-    <p>Age: {patient_data.get("age","")} |
-       DOB: {patient_data.get("dob","")} |
-       Visit Date: {visits[-1]["visit_date"] if visits else ""} |
-       Therapist: {patient_data.get("therapist","")}</p>
-    <p>Surgery/Injury Date: {patient_data.get("surgery_date","")} |
-       Days Out: {days_out}</p>
-  </div>
-  <h3>Summary of Movements (Walk, Drop Jump, Heel Touch)</h3>
-  <p>(Reserved for later data.)</p>
-</div>
-
-<div class="page">
-  <div class="subheader">
-    <p>Name: {patient_data.get("name","")} |
-       ID: {patient_data.get("id","")} |
-       Injury Side: {patient_data.get("injury_side","")} |
-       Visit Date: {visits[-1]["visit_date"] if visits else ""}</p>
-  </div>
-  <h3>Dynamic Knee Valgus Summary</h3>
-  <p>Plots are in the PDF version.</p>
-</div>
-
-<div class="page">
-  <div class="subheader">
-    <p>Name: {patient_data.get("name","")} |
-       ID: {patient_data.get("id","")} |
-       Injury Side: {patient_data.get("injury_side","")} |
-       Visit Date: {visits[-1]["visit_date"] if visits else ""}</p>
-  </div>
-  <h3>Hip vs Knee Strategy Summary</h3>
-  <p>Plots are in the PDF version.</p>
-</div>
-
-</body>
-</html>
-"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+            <meta charset="utf-8">
+            <title>Patient Report</title>
+            <style>
+            .page {{
+              page-break-after: always;
+              padding: 20px;
+              font-family: Arial, sans-serif;
+            }}
+            .header {{
+              font-size: 12px;
+              border-bottom: 1px solid #000;
+              margin-bottom: 10px;
+            }}
+            .subheader {{
+              font-size: 10px;
+              border-bottom: 1px solid #000;
+              margin-bottom: 10px;
+            }}
+            </style>
+            </head>
+            <body>
+            
+            <div class="page">
+              <div class="header">
+                <p>Name: {patient_data.get("name","")} |
+                   ID: {patient_data.get("id","")} |
+                   Physician: {patient_data.get("physician","")} |
+                   Injury: {patient_data.get("injury","")} ({patient_data.get("injury_side","")})</p>
+                <p>Age: {patient_data.get("age","")} |
+                   DOB: {patient_data.get("dob","")} |
+                   Visit Date: {visits[-1]["visit_date"] if visits else ""} |
+                   Therapist: {patient_data.get("therapist","")}</p>
+                <p>Surgery/Injury Date: {patient_data.get("surgery_date","")} |
+                   Days Out: {days_out}</p>
+              </div>
+              <h3>Summary of Movements (Walk, Drop Jump, Heel Touch)</h3>
+              <p>(Reserved for later data.)</p>
+            </div>
+            
+            <div class="page">
+              <div class="subheader">
+                <p>Name: {patient_data.get("name","")} |
+                   ID: {patient_data.get("id","")} |
+                   Injury Side: {patient_data.get("injury_side","")} |
+                   Visit Date: {visits[-1]["visit_date"] if visits else ""}</p>
+              </div>
+              <h3>Dynamic Knee Valgus Summary</h3>
+              <p>Plots are in the PDF version.</p>
+            </div>
+            
+            <div class="page">
+              <div class="subheader">
+                <p>Name: {patient_data.get("name","")} |
+                   ID: {patient_data.get("id","")} |
+                   Injury Side: {patient_data.get("injury_side","")} |
+                   Visit Date: {visits[-1]["visit_date"] if visits else ""}</p>
+              </div>
+              <h3>Hip vs Knee Strategy Summary</h3>
+              <p>Plots are in the PDF version.</p>
+            </div>
+            
+            </body>
+            </html>
+            """
         with open(filename, "w", encoding="utf-8") as f:
             f.write(html)
 
@@ -366,11 +377,17 @@ class DataFormatter:
 # ============================================================
 class ReportGenerator:
     def __init__(self, plot_manager, metrics_calc):
-        self.plot_manager = plot_manager
-        self.metrics_calc = metrics_calc
-        self.styles = getSampleStyleSheet()
+        self.plot_manager   = plot_manager
+        self.metrics_calc   = metrics_calc
+        self.styles         = getSampleStyleSheet()
         
     # ---- For Spencer
+    def generate_summary_page(self, patient_data):
+        print("Hey Spencer, fix this")
+        lastname = patient_data["lastname"]
+        print(f'patient last name: {lastname}')
+        return None
+    
     def generate_pdf(self, filename, patient_data, visits, tmp_dir="tmp_plots"):
         os.makedirs(tmp_dir, exist_ok=True)
 
@@ -413,7 +430,7 @@ class ReportGenerator:
         story.append(Paragraph("<b>Dynamic Knee Valgus Summary</b>", self.styles["Heading2"]))
         story.append(Spacer(1, 0.2 * inch))
 
-        dkv_fig = self.plot_manager.create_dkv_figure(visits)
+        dkv_fig = self.plot_manager.dkv_errbar_figure(visits)
         dkv_path = os.path.join(tmp_dir, "dynamic_knee_valgus_page.png")
         dkv_fig.savefig(dkv_path, dpi=150, bbox_inches="tight")
         story.append(Image(dkv_path, width=7.5 * inch, height=9 * inch))
@@ -425,7 +442,7 @@ class ReportGenerator:
         story.append(Paragraph("<b>Hip vs Knee Strategy Summary</b>", self.styles["Heading2"]))
         story.append(Spacer(1, 0.2 * inch))
 
-        hip_fig = self.plot_manager.create_hks_figure(visits)
+        hip_fig = self.plot_manager.hks_errbar_figure(visits)
         hip_path = os.path.join(tmp_dir, "hip_knee_page.png")
         hip_fig.savefig(hip_path, dpi=150, bbox_inches="tight")
         story.append(Image(hip_path, width=7.5 * inch, height=9 * inch))
@@ -441,7 +458,7 @@ class PatientReportApp(tk.Tk):
         super().__init__()
 
         self.title("Patient Report Generator")
-        self.geometry("1000x600")
+        self.geometry("850x395")
 
         # Classes
         self.plot_manager           = PlotManager()
@@ -450,13 +467,13 @@ class PatientReportApp(tk.Tk):
         self.report_generator       = ReportGenerator(self.plot_manager, self.metrics_calc)
 
         # Data
-        self.patient_data           = SAMPLE_PATIENT.copy()
+        self.patient_data           = Default_patient_info.copy()
         self.visits                 = SAMPLE_VISITS.copy()
         self.data_handler           = DataHandling()
         self.loaded_gcd_data        = None
         self.loaded_py_data         = None
 
-        # Previwing
+        # Previewing
         self.plot_window            = None
         self.first_preview_render   = True # preview window render set
         self.current_preview_page   = 1
@@ -465,7 +482,83 @@ class PatientReportApp(tk.Tk):
         
         # open file explorer and pick data
         # self.load_gcd_data()
-        
+    def call_ReportGeneratorfuncs(self, function_to_call):
+        '''
+        SUMMARY: need to call functions across apps through a specific function call
+        The function call requires a function within the class where it is being
+        called, which is this function
+
+        Returns: whatever the function that is called in the other app is, will be returned
+        '''
+        if function_to_call == 'generate_summary':
+            self.report_generator.generate_summary_page(self.patient_data)
+    
+    def add_placeholder(self, entry, placeholder, color="gray"):
+        entry.insert(0, placeholder)
+        entry.config(foreground=color)
+    
+        def on_focus_in(event):
+            if entry.get() == placeholder:
+                entry.delete(0, "end")
+                entry.config(foreground="black")
+    
+        def on_focus_out(event):
+            if not entry.get():
+                entry.insert(0, placeholder)
+                entry.config(foreground=color)
+    
+        entry.bind("<FocusIn>", on_focus_in)
+        entry.bind("<FocusOut>", on_focus_out)
+
+    def reset_app(self):
+        """
+        Reset the entire application to its initial state,
+        as if it was just opened.
+        """
+    
+        # --- Reset stored data ---
+        self.patient_data = Default_patient_info
+    
+        self.loaded_gcd_data = None
+        self.loaded_python_data = None
+        self.current_preview_page = 1
+    
+        # --- Clear all entry widgets ---
+        for entry in [
+            self.entry_first_name,
+            self.entry_last_name,
+            self.entry_dob,
+            self.entry_visit_date,
+            self.entry_side,
+            self.entry_height,
+            self.entry_weight,
+            self.entry_notes,
+        ]:
+            entry.delete(0, "end")
+    
+        # If you replaced age with a label:
+        if hasattr(self, "label_age"):
+            self.label_age.config(text=Default_patient_info["age"])
+    
+        # --- Close preview window if open ---
+        if self.plot_window is not None:
+            try:
+                self.plot_window.destroy()
+            except:
+                pass
+            self.plot_window = None
+    
+        # --- Reset plot manager or other helper classes ---
+        if hasattr(self, "plot_manager"):
+            self.plot_manager.reset()  # only if you have a reset() method
+    
+        # --- Update preview box text ---
+        self.preview_box.delete("1.0", "end")
+        self.preview_box.insert("end", "All data cleared. Ready for new patient.")
+    
+        # --- Reset any flags ---
+        self.first_preview_render = True
+
 
     def load_gcd_data(self):
         # need to use a data handler function to get data from the other class in a clean way
@@ -486,89 +579,148 @@ class PatientReportApp(tk.Tk):
     #  UI
     # --------------------------------------------------------
     def create_widgets(self):
-        left = ttk.Frame(self)
-        left.grid(row=0, column=0, sticky="nsw", padx=10, pady=10)
+        # ---------- Patient frame ----------
+        # -----------------------------------
+        patient_info_frame = tk.LabelFrame(self, text='Patient Information')
+        patient_info_frame.grid(row=0, column=0, sticky='nsew', padx=10, pady=5) # in row 1 column 1 in frame 1
 
         # Patient/session fields
-        ttk.Label(left, text="Patient Name").grid(row=0, column=0, sticky="e")
-        self.entry_name = ttk.Entry(left, width=30)
-        self.entry_name.grid(row=0, column=1, sticky="w")
-        self.entry_name.insert(0, self.patient_data["name"])
-
-        ttk.Label(left, text="ID").grid(row=1, column=0, sticky="e")
-        self.entry_id = ttk.Entry(left, width=30)
-        self.entry_id.grid(row=1, column=1, sticky="w")
-        self.entry_id.insert(0, self.patient_data["id"])
-
-        ttk.Label(left, text="Physician").grid(row=2, column=0, sticky="e")
-        self.entry_physician = ttk.Entry(left, width=30)
-        self.entry_physician.grid(row=2, column=1, sticky="w")
-        self.entry_physician.insert(0, self.patient_data["physician"])
-
-        ttk.Label(left, text="Injury").grid(row=3, column=0, sticky="e")
-        self.entry_injury = ttk.Entry(left, width=30)
-        self.entry_injury.grid(row=3, column=1, sticky="w")
-        self.entry_injury.insert(0, self.patient_data["injury"])
-
-        ttk.Label(left, text="Injury Side").grid(row=4, column=0, sticky="e")
-        self.entry_side = ttk.Entry(left, width=30)
-        self.entry_side.grid(row=4, column=1, sticky="w")
-        self.entry_side.insert(0, self.patient_data["injury_side"])
-
-        ttk.Label(left, text="DOB (YYYY-MM-DD)").grid(row=5, column=0, sticky="e")
-        self.entry_dob = ttk.Entry(left, width=30)
-        self.entry_dob.grid(row=5, column=1, sticky="w")
-        self.entry_dob.insert(0, self.patient_data["dob"])
+        ttk.Label(patient_info_frame, text="Last Name").grid(row=0, column=0, sticky="e")
+        self.entry_lastname = ttk.Entry(patient_info_frame, width=20)
+        self.entry_lastname.grid(row=0, column=1, sticky="w", padx=3, pady=2)
+        # self.entry_lastname.insert(0, self.patient_data["lastname"])
+        self.add_placeholder(self.entry_lastname, self.patient_data["lastname"])
         
-        ttk.Label(left, text="Age").grid(row=6, column=0, sticky="e")
-        self.label_age = ttk.Label(left, text=str(self.patient_data["age"]))
-        self.label_age.grid(row=6, column=1, sticky="w")
+        ttk.Label(patient_info_frame, text="First Name").grid(row=0, column=2, sticky="e")
+        self.entry_firstname = ttk.Entry(patient_info_frame, width=20)
+        self.entry_firstname.grid(row=0, column=3, sticky="w", padx=3, pady=2)
+        # self.entry_firstname.insert(0, self.patient_data["firstname"])
+        self.add_placeholder(self.entry_firstname, self.patient_data["firstname"])
 
-        ttk.Label(left, text="Therapist").grid(row=7, column=0, sticky="e")
-        self.entry_therapist = ttk.Entry(left, width=30)
-        self.entry_therapist.grid(row=7, column=1, sticky="w")
-        self.entry_therapist.insert(0, self.patient_data["therapist"])
+        ttk.Label(patient_info_frame, text="DOB").grid(row=1, column=0, sticky="e")
+        self.entry_dob = ttk.Entry(patient_info_frame, width=20)
+        self.entry_dob.grid(row=1, column=1, sticky="w", padx=3, pady=2)
+        # self.entry_dob.insert(0, self.patient_data["dob"])
+        self.add_placeholder(self.entry_dob, self.patient_data["dob"])
+        
+        ttk.Label(patient_info_frame, text="Age").grid(row=1, column=2, sticky="e")
+        self.label_age = ttk.Label(patient_info_frame, text=str(self.patient_data["age"]))
+        self.label_age.grid(row=1, column=3, sticky="w", padx=3, pady=2)
 
-        ttk.Label(left, text="Surgery/Injury Date").grid(row=8, column=0, sticky="e")
-        self.entry_surgery = ttk.Entry(left, width=30)
-        self.entry_surgery.grid(row=8, column=1, sticky="w")
-        self.entry_surgery.insert(0, self.patient_data["surgery_date"])
+        ttk.Label(patient_info_frame, text="ID").grid(row=2, column=0, sticky="e")
+        self.entry_id = ttk.Entry(patient_info_frame, width=20)
+        self.entry_id.grid(row=2, column=1, sticky="w", padx=3, pady=2)
+        # self.entry_id.insert(0, self.patient_data["id"])
+        self.add_placeholder(self.entry_id, self.patient_data["id"])
+        
+        ttk.Label(patient_info_frame, text="Visit Date").grid(row=2, column=2, sticky="e")
+        self.entry_visit_date = ttk.Entry(patient_info_frame, width=20)
+        self.entry_visit_date.grid(row=2, column=3, sticky="w", padx=3, pady=2)
+        self.entry_visit_date.insert(0, date.today())
+        # self.add_placeholder(self.entry_visit_date, date.today())
+        
+        ttk.Label(patient_info_frame, text="**all dates in YYYY-MM-DD format**").grid(row=3, column=1, columnspan=2, sticky="e")
+        
+        # ---------- Clinical frame ----------
+        # ------------------------------------
+        clinical_info_frame = tk.LabelFrame(self, text='Clinical Information')
+        clinical_info_frame.grid(row=0, column=1, sticky='nsew', padx=10, pady=5) # in row 1 column 1 in frame 1
 
-        ttk.Label(left, text="Visit Date (YYYY-MM-DD)").grid(row=9, column=0, sticky="e")
-        self.entry_visit_date = ttk.Entry(left, width=30)
-        self.entry_visit_date.grid(row=9, column=1, sticky="w")
-        self.entry_visit_date.insert(0, self.visits[-1]["visit_date"])
+        # left
+        ttk.Label(clinical_info_frame, text="Physician").grid(row=0, column=0, sticky="e")
+        self.entry_physician = ttk.Entry(clinical_info_frame, width=20)
+        self.entry_physician.grid(row=0, column=1, sticky="w", padx=3, pady=2)
+        # self.entry_physician.insert(0, self.patient_data["physician"])
+        self.add_placeholder(self.entry_physician, self.patient_data["physician"])
+        
+        ttk.Label(clinical_info_frame, text="Therapist").grid(row=1, column=0, sticky="e")
+        self.entry_therapist = ttk.Entry(clinical_info_frame, width=20)
+        self.entry_therapist.grid(row=1, column=1, sticky="w", padx=3, pady=2)
+        # self.entry_therapist.insert(0, self.patient_data["therapist"])
+        self.add_placeholder(self.entry_therapist, self.patient_data["therapist"])
 
-        ttk.Button(left, text="Load GCD Data", command=lambda: (self.load_gcd_data(), self.update_data())).grid(row=10, column=0, pady=10, sticky="w")
-        ttk.Button(left, text="Open Plot Window", command=self.open_plot_window).grid(row=12, column=0, pady=10, sticky="w")
-        ttk.Button(left, text="Generate PDF", command=self.export_pdf).grid(row=13, column=0, pady=10, sticky="w")
-        ttk.Button(left, text="Save JSON + HTML", command=self.save_json_html).grid(row=14, column=0, pady=10, sticky="w")
-        # Close App button (bottom-left)
-        ttk.Button(left, text="Close App", command=self.destroy).grid(row=15, column=0, pady=20, sticky="w")
+        ttk.Label(clinical_info_frame, text="Injury").grid(row=2, column=0, sticky="e")
+        self.entry_injury = ttk.Entry(clinical_info_frame, width=20)
+        self.entry_injury.grid(row=2, column=1, sticky="w", padx=3, pady=2)
+        # self.entry_injury.insert(0, self.patient_data["injury"])
+        self.add_placeholder(self.entry_injury, self.patient_data["injury"])
+        
+        # right
+        ttk.Label(clinical_info_frame, text="Injury Side").grid(row=0, column=2, sticky="e")
+        self.entry_side = ttk.Entry(clinical_info_frame, width=20)
+        self.entry_side.grid(row=0, column=3, sticky="w", padx=3, pady=2)
+        # self.entry_side.insert(0, self.patient_data["injury_side"])
+        self.add_placeholder(self.entry_side, self.patient_data["injury_side"])
 
-        # Right: preview text
-        right = ttk.Frame(self)
-        right.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
-        self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(0, weight=1)
+        ttk.Label(clinical_info_frame, text="Injury Date").grid(row=1, column=2, sticky="e")
+        self.entry_injury_date = ttk.Entry(clinical_info_frame, width=20)
+        self.entry_injury_date.grid(row=1, column=3, sticky="w", padx=3, pady=2)
+        # self.entry_injury_date.insert(0, self.patient_data["surgery_date"])
+        self.add_placeholder(self.entry_injury_date, self.patient_data["injury_date"])
+        
+        ttk.Label(clinical_info_frame, text="Surgery Date").grid(row=2, column=0, sticky="e")
+        self.entry_surgery_date = ttk.Entry(clinical_info_frame, width=20)
+        self.entry_surgery_date.grid(row=2, column=1, sticky="w", padx=3, pady=2)
+        # self.entry_surgery_date.insert(0, self.patient_data["surgery_date"])
+        self.add_placeholder(self.entry_surgery_date, self.patient_data["surgery_date"])
 
-        ttk.Label(right, text="Report Preview (Text)").grid(row=0, column=0, sticky="w")
-        self.preview_box = ScrolledText(right, width=70, height=30)
-        self.preview_box.grid(row=1, column=0, sticky="nsew")
-        self.refresh_preview()
+        # ---------- Navigation frame ----------
+        # --------------------------------------
+        navigation_frame = tk.LabelFrame(self, text='Navigation')
+        navigation_frame.grid(row=1, column=0, columnspan=2, sticky='nsew', padx=10, pady=5) # in row 1 column 1 in frame 1
+
+        
+        ttk.Button(navigation_frame, text="Update Patient Info", width=65, command=lambda: (self.update_data())).grid(row=0, column=0, pady=5, padx=5, sticky="w")
+        ttk.Button(navigation_frame, text="Load GCD Data", width=65, command=lambda: (self.load_gcd_data(), self.update_data())).grid(row=0, column=1, pady=5, padx=5, sticky="w")
+        ttk.Button(navigation_frame, text="Export Summary Report", width=133, command=lambda: self.call_ReportGeneratorfuncs("generate_summary")).grid(row=1, column=0, columnspan=2, ipady=10, pady=5, padx=5, sticky="w")
+        ttk.Button(navigation_frame, text="Open Plot Window", width=65, command=self.open_plot_window).grid(row=2, column=0, pady=5, padx=5, sticky="w")
+        ttk.Button(navigation_frame, text="Generate Full Report", width=65, command=self.export_pdf).grid(row=2, column=1, pady=5, padx=5, sticky="w")
+        ttk.Button(navigation_frame, text="Save Data", width=133, command=self.save_json_html).grid(row=3, column=0, columnspan=2, pady=5, padx=5, sticky="n")
+        ttk.Button(navigation_frame, text="Reset to Default", width=133, command=self.reset_app).grid(row=4, column=0, columnspan=2, pady=5, padx=5, sticky="n")
+        ttk.Button(navigation_frame, text="Close App", width=133, command=self.destroy).grid(row=5, column=0, rowspan=2, columnspan=2, ipady=10, pady=5, padx=5, sticky="n")
+        
+        # ipadx is *internal* spacing as apposed to external with padx
+        
+        # # Right: preview text
+        # right = ttk.Frame(self)
+        # right.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
+        # self.grid_columnconfigure(1, weight=1)
+        # self.grid_rowconfigure(0, weight=1)
+
+        # ttk.Label(right, text="Report Preview (Text)").grid(row=0, column=0, sticky="w")
+        # self.preview_box = ScrolledText(right, width=70, height=30)
+        # self.preview_box.grid(row=1, column=0, sticky="nsew")
+        # self.refresh_preview()
 
     # --------------------------------------------------------
     def update_data(self):
-        self.patient_data["name"]           = self.loaded_py_data[0]['data']['valueFirstName'] + self.loaded_py_data[0]['data']['valueLastName']
-        self.patient_data["id"]             = self.loaded_py_data[0]['data']['valuePatientNumber']
+        try:
+            self.patient_data["lastname"]   = self.loaded_py_data[0]['data']['valueLastName']
+            self.patient_data["firstname"]  = self.loaded_py_data[0]['data']['valueFirstName']
+            self.patient_data["id"]         = self.loaded_py_data[0]['data']['valuePatientNumber']
+            dob_string                      = self.loaded_py_data[0]['data']['valueDateOfBirth_Year'] + "-" + self.loaded_py_data[0]['data']['valueDateOfBirth_Month'] + "-" + self.loaded_py_data[0]['data']['valueDateOfBirth_Day']
+            dob                             = datetime.strptime(dob_string, "%Y-%b-%d").strftime("%Y-%m-%d") # date string has month value as "Apr" e.g. so needs to be translated back to "YYYY-MM-DD" with all integer values
+            self.patient_data["dob"]        = dob 
+        except:
+            self.patient_data["lastname"]   = self.entry_lastname.get()
+            self.patient_data["firstname"]  = self.entry_firstname.get()
+            self.patient_data["id"]         = self.entry_id.get()
+            self.patient_data["dob"]        = self.entry_dob.get()
+            dob                             = self.entry_dob.get()
+            
         self.patient_data["physician"]      = self.entry_physician.get()
+        self.patient_data["therapist"]      = self.entry_therapist.get()
         self.patient_data["injury"]         = self.entry_injury.get()
+        self.patient_data["injury_date"]    = self.entry_injury_date.get()
         self.patient_data["injury_side"]    = self.entry_side.get()
-        dob_string                          = self.loaded_py_data[0]['data']['valueDateOfBirth_Year'] + "-" + self.loaded_py_data[0]['data']['valueDateOfBirth_Month'] + "-" + self.loaded_py_data[0]['data']['valueDateOfBirth_Day']
-        dob                                 = datetime.strptime(dob_string, "%Y-%b-%d").strftime("%Y-%m-%d") # date string has month value as "Apr" e.g. so needs to be translated back to "YYYY-MM-DD" with all integer values
+        self.patient_data["surgery_date"]   = self.entry_surgery_date.get()
         visit_date                          = self.entry_visit_date.get()
-        
-        self.patient_data["dob"]            = dob     
+        age                                 = self.data_handler.calculate_age(dob, visit_date)
+        self.patient_data["age"]            = age
+        # update age label on frame after age is calculated from dob
+        self.label_age.config(text=str(self.patient_data["age"]))
+
+            
         # Update last visit date
         if self.visits:
             self.visits[-1]["visit_date"]   = visit_date
@@ -579,38 +731,29 @@ class PatientReportApp(tk.Tk):
                 "hip_knee_strategy": {}
             })
         
-        # self.patient_data["age"]            = int(self.entry_age.get()) if self.entry_age.get().isdigit() else self.entry_age.get()
-        
-        age                                 = self.data_handler.calculate_age(dob, visit_date)
-        self.patient_data["age"]            = age
-        self.patient_data["therapist"]      = self.entry_therapist.get()
-        self.patient_data["surgery_date"]   = self.entry_surgery.get()
-
-        
-
-        self.refresh_preview()
+        # self.refresh_preview()
         messagebox.showinfo("Updated", "Patient and visit data updated.")
 
-    def refresh_preview(self):
-        self.preview_box.delete("1.0", tk.END)
-        visit_date  = self.visits[-1]["visit_date"] if self.visits else ""
-        days_out    = self.metrics_calc.compute_days_out(visit_date, self.patient_data.get("surgery_date", ""))
+    # def refresh_preview(self):
+    #     # self.preview_box.delete("1.0", tk.END) **removed
+    #     visit_date  = self.visits[-1]["visit_date"] if self.visits else ""
+    #     days_out    = self.metrics_calc.compute_days_out(visit_date, self.patient_data.get("surgery_date", ""))
 
-        text = (
-            f"Name: {self.patient_data['name']}\n"
-            f"ID: {self.patient_data['id']}\n"
-            f"Physician: {self.patient_data['physician']}\n"
-            f"Injury: {self.patient_data['injury']} ({self.patient_data['injury_side']})\n"
-            f"Age: {self.patient_data['age']}\n"
-            f"DOB: {self.patient_data['dob']}\n"
-            f"Therapist: {self.patient_data['therapist']}\n"
-            f"Surgery/Injury Date: {self.patient_data['surgery_date']}\n"
-            f"Visit Date: {visit_date}\n"
-            f"Days Out: {days_out if days_out is not None else '-'}\n\n"
-            f"Visits loaded: {len(self.visits)}\n"
-            f"(Sample Knee valgus and Hip/Knee strategy data included for testing.)\n"
-        )
-        self.preview_box.insert(tk.END, text)
+    #     text = (
+    #         f"Name: {self.patient_data['name']}\n"
+    #         f"ID: {self.patient_data['id']}\n"
+    #         f"Physician: {self.patient_data['physician']}\n"
+    #         f"Injury: {self.patient_data['injury']} ({self.patient_data['injury_side']})\n"
+    #         f"Age: {self.patient_data['age']}\n"
+    #         f"DOB: {self.patient_data['dob']}\n"
+    #         f"Therapist: {self.patient_data['therapist']}\n"
+    #         f"Surgery/Injury Date: {self.patient_data['surgery_date']}\n"
+    #         f"Visit Date: {visit_date}\n"
+    #         f"Days Out: {days_out if days_out is not None else '-'}\n\n"
+    #         f"Visits loaded: {len(self.visits)}\n"
+    #         f"(Sample Knee valgus and Hip/Knee strategy data included for testing.)\n"
+    #     )
+    #     self.preview_box.insert(tk.END, text)
 
     # --------------------------------------------------------
     #  Plot Window
@@ -740,10 +883,10 @@ class PatientReportApp(tk.Tk):
         self.preview_figures[1] = fig1
     
         # PAGE 2 — DKV plots
-        self.preview_figures[2] = self.plot_manager.create_dkv_figure(self.visits)
+        self.preview_figures[2] = self.plot_manager.dkv_errbar_figure(self.visits)
     
         # PAGE 3 — Hip vs Knee plots
-        self.preview_figures[3] = self.plot_manager.create_hks_figure(self.visits)
+        self.preview_figures[3] = self.plot_manager.hks_errbar_figure(self.visits)
 
     def open_plot_window(self):
         # If already open, bring to front
