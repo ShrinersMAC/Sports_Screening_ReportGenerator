@@ -11,6 +11,7 @@ from tkinter.scrolledtext import ScrolledText
 import json
 import os
 from datetime import datetime, date
+import pandas as pd
 
 import matplotlib
 matplotlib.use("Agg")  # For off-screen rendering
@@ -29,17 +30,18 @@ from shared_utils.get_GCDdata import get_data as gcd
 #  Sample Data (for testing)
 # ============================================================
 Default_patient_info = {
-    "lastname": "Doe",
-    "firstname": "Jane",
-    "id": "123456",
-    "physician": "Dr. Smith",
-    "injury": "ACL Tear",
-    "injury_side": "Right",
-    "age": 12,
-    "dob": "2012-01-01",
-    "therapist": "Jane Therapist",
-    "injury_date": "2019-12-01",
-    "surgery_date": "2020-01-01"
+    "lastname":         "Doe",
+    "firstname":        "Jane",
+    "id":               "123456",
+    "physician":        "Dr. Smith",
+    "injury_diagnosis": "ACL tear",
+    "injury_side":      "Right",
+    "age":              12,
+    "dob":              "2012-01-01",
+    "gender":           "female",
+    "sex":              "female",
+    "therapist":        "Jane Therapist",
+    "surgery_date":     "2020-01-01"
 }
 
 # ---- Sample visit data 
@@ -85,7 +87,37 @@ SAMPLE_VISITS = [
     }
 ]
 
-# ---- RTS cut points
+# ============================================================
+# ---- RTS measures and cut-points
+# ============================================================ 
+single_measures = [
+    "HipAbAdduct_MAX_IC_PKF",
+    "KneeValgVar_AVG_IC_PKF",
+    "KneeFlexExt_MAX_IC_PKF",
+    "HipFlexExt_MAX_IC_PKF",
+    "KneeFlexExtMoment_INT_POS_IC_PKF",
+    "HipFlexExtMoment_INT_POS_IC_PKF",
+    "HipAbAdduct_VAL_PKF",
+    "KneeValgVar_VAL_PKF",
+    "PelvicObliquity_VAL_PKF",
+    "TrunkObliquity_MAX_IC_PKF",
+    "TrunkObliquity_MIN_IC_PKF",
+    "TrunkTilt_VAL_PKF",
+    "HipBehindHeel",
+    "AnkleBehindKnee",
+    "KneeBehindShoeFront"
+    ]
+
+series_measures = [
+    "TrunkObliquity",
+    "TrunkTilt",
+    "HipAbAdduct",
+    "HipFlexExt",
+    "KneeValgVar",
+    "KneeFlexExt",
+    "DorsiPlanFlex",
+    ]
+
 cut_points = {
     "dynamic_knee_valgus": {
         "lateral_trunk_lean": {
@@ -155,8 +187,8 @@ class DataHandling:
                     data_dict = gcd(path)
     
                     gcd_data.append({
-                        "file_path": filename,
-                        "data": data_dict
+                        "file_name": filename,
+                        "data_dict": data_dict
                     })
                     
                 except Exception as e:
@@ -201,8 +233,126 @@ class DataHandling:
         )
 
         return age
+    
+    def parse_gcdData(self, gcd_data):
+        '''
+        SUMMARY: GCD data needs to be parsed into a dataframe to be used nicely
+        in the plotting functions such that session, side, and injured/uninjured
+        sides can be filtered nicely
 
+        Parameters
+        ----------
+        gcd_data : TYPE - list
+            DESCRIPTION: gcd_data is a list of dictionaries, with each dictionary
+            having two main keys: 'file_name', and 'data'. The data key will give
+            a dictionary of all parameters from the gcd file, with each key being
+            the name of the parameter (e.g. 'LeftStrideLength') and the item 
+            being a list of the value(s) of the parameter.
 
+        Returns: 
+            dataframe for single-value data
+            dataframe for 101-point cycle data
+        '''
+        # loop through files to add to dataframes
+        all_single = []
+        all_series = []
+        tn = 0
+        for gcd_dict in gcd_data:
+            # pull file number
+            fn = gcd_dict["file_name"].split('.')[0][-5:-3]
+            
+            # pull trial type
+            trial_types = ['DVJ', 'HET', 'Walk']
+            trial = [ttype for ttype in trial_types if ttype in gcd_dict["file_name"]][0]
+            
+            trial_fn = trial + fn
+            side = "Right" if "-R" in gcd_dict["file_name"] else "Left"
+            
+            # separate out single-value versus cycle data
+            # pulling data while removing the side string from the name
+            single_vals = {k.split(side)[1]: v[0] for k, v in gcd_dict["data_dict"].items() if len(v) == 1 and k.split(side)[1] in single_measures} 
+            series_vals = {k.split(side)[1]: v for k, v in gcd_dict["data_dict"].items() if len(v) > 1 and 'GRF' not in k and k.split(side)[1] in series_measures} # grf data not 101 points
+            
+            # single value dataframe
+            df_single = pd.DataFrame([single_vals])
+            df_single["task"] = trial
+            df_single["file"] = trial_fn
+            df_single["trial"] = tn
+            df_single["side"] = side
+            
+            # series dataframe
+            df_series = pd.DataFrame(series_vals)
+            df_series["file"] = trial_fn
+            df_series["side"] = side
+            
+            # list of dataframes - each file adds new dataframe
+            all_single.append(df_single)
+            all_series.append(df_series)
+            tn += 1
+            
+        # concatenate all trial dataframes to a single dataframe
+        single_df = pd.concat(all_single, axis=0, ignore_index=True)
+        # force 0,1 columns to binary
+        bool_cols = single_df.columns[single_df.isin([0,1]).all()]
+        single_df[bool_cols] = single_df[bool_cols].astype(bool)
+        
+        series_df = pd.concat(all_series, axis=0, ignore_index=True)
+            
+        return single_df, series_df
+    
+    def calc_dfVals(self, df, impaired):
+        '''
+        SUMMARY. dataframe column data needs to have mean, sd, and difference
+        values calculated
+
+        Parameters
+        ----------
+        df : TYPE: dataframe - all extracted data
+            DESCRIPTION: contains values for joing angle data and binary values
+            for hip/knee strategy checks on hips behind heels, knees over toes
+
+        Returns: updated dataframe with additional columns
+        '''
+        # pull only numeric datatypes and drop the trial column
+        numeric_cols = df.drop(columns="trial").select_dtypes(include="number").columns
+        
+        # calculate mean/sd over n-visits
+        summary_df = (df.groupby(["task", "side"])[numeric_cols]
+                        .agg(["min", "max", "mean"])
+                        )
+        
+        # now flatten the multi-index dataframe
+        summary_df.columns = ['_'.join(col) for col in summary_df.columns]
+        summary_df = summary_df.reset_index()
+        
+        # calculate impaired/un-impaired difference
+        # pivot left/right to columns first
+        metrics = summary_df.select_dtypes(include="number").columns
+        pivoted = summary_df.pivot(index="task", columns="side", values=metrics)
+        
+        # comute diffs for all measures as impaired - unimpaired
+        if 'r' in impaired.lower():
+            impaired = "Right"
+            unimpaired = "Left"
+        else:
+            impaired = "Left"
+            unimpaired = "Right"
+            
+        # subtract
+        impaired_df = pivoted.xs(impaired, axis=1, level="side")
+        unimpaired_df = pivoted.xs(unimpaired, axis=1, level="side")
+        
+        diffs = impaired_df - unimpaired_df
+        
+        # convert back to long format
+        diff_rows = (
+            diffs.reset_index().assign(side="diff")
+            )
+        
+        # append to summary dataframe
+        final_df = pd.concat([summary_df, diff_rows], ignore_index=True)
+        
+        return final_df
 # ============================================================
 #  Plot Manager
 # ============================================================
@@ -458,7 +608,7 @@ class PatientReportApp(tk.Tk):
         super().__init__()
 
         self.title("Patient Report Generator")
-        self.geometry("850x395")
+        self.geometry("845x430")
 
         # Classes
         self.plot_manager           = PlotManager()
@@ -481,7 +631,7 @@ class PatientReportApp(tk.Tk):
         self.create_widgets()
         
         # open file explorer and pick data
-        # self.load_gcd_data()
+        # self.load_data()
     def call_ReportGeneratorfuncs(self, function_to_call):
         '''
         SUMMARY: need to call functions across apps through a specific function call
@@ -519,9 +669,12 @@ class PatientReportApp(tk.Tk):
         # --- Reset stored data ---
         self.patient_data = Default_patient_info
     
-        self.loaded_gcd_data = None
-        self.loaded_python_data = None
-        self.current_preview_page = 1
+        self.loaded_gcd_data        = None
+        self.loaded_python_data     = None
+        self.loaded_single_df       = None
+        self.loaded_series_df       = None
+        self.loaded_summary_df      = None
+        self.current_preview_page   = 1
     
         # --- Clear all entry widgets ---
         for entry in [
@@ -560,19 +713,40 @@ class PatientReportApp(tk.Tk):
         self.first_preview_render = True
 
 
-    def load_gcd_data(self):
+    def load_data(self):
         # need to use a data handler function to get data from the other class in a clean way
         # ---- call function across classes
         gcd_data, py_data = self.data_handler.getData_dialog()
+        
+        
     
         if gcd_data:
             # assign to self to use across the app
-            self.loaded_gcd_data = gcd_data
-            self.loaded_py_data  = py_data
+            single_df, series_df    = self.data_handler.parse_gcdData(gcd_data)
+            
+            # keep data accessible across classes
+            self.loaded_gcd_data    = gcd_data
+            self.loaded_single_df   = single_df
+            self.loaded_series_df   = series_df
     
+            # now take dataframes and calculate needed metrics
+            impaired = self.patient_data["injury_side"]
+            summary_df = self.data_handler.calc_dfVals(single_df, impaired)
+            # ---- !! NEW FOR SPENCER !!
+            self.loaded_summary_df = summary_df
+            
             messagebox.showinfo(
                 "Data Loaded",
-                f"Successfully loaded {len(gcd_data)} GCD file(s).\nSuccessfully loaded {len(py_data)} static python file."
+                f"Successfully loaded {len(gcd_data)} GCD file(s).\nSuccessfully loaded single, series, and summary data."
+            )
+            
+        if py_data:
+            # keep loaded patient data accessible across classes
+            self.loaded_py_data  = py_data
+            
+            messagebox.showinfo(
+                "Data Loaded",
+                "Successfully loaded patient info from .py file."
             )
     
     # --------------------------------------------------------
@@ -606,20 +780,30 @@ class PatientReportApp(tk.Tk):
         ttk.Label(patient_info_frame, text="Age").grid(row=1, column=2, sticky="e")
         self.label_age = ttk.Label(patient_info_frame, text=str(self.patient_data["age"]))
         self.label_age.grid(row=1, column=3, sticky="w", padx=3, pady=2)
+        
+        ttk.Label(patient_info_frame, text="Gender").grid(row=2, column=0, sticky="e")
+        self.entry_gender = ttk.Entry(patient_info_frame, width=20)
+        self.entry_gender.grid(row=2, column=1, sticky="w", padx=3, pady=2)
+        self.add_placeholder(self.entry_gender, self.patient_data["gender"])
+        
+        ttk.Label(patient_info_frame, text="Sex").grid(row=2, column=2, sticky="e")
+        self.entry_sex = ttk.Entry(patient_info_frame, width=20)
+        self.entry_sex.grid(row=2, column=3, sticky="w", padx=3, pady=2)
+        self.add_placeholder(self.entry_sex, self.patient_data["sex"])
 
-        ttk.Label(patient_info_frame, text="ID").grid(row=2, column=0, sticky="e")
+        ttk.Label(patient_info_frame, text="ID").grid(row=3, column=0, sticky="e")
         self.entry_id = ttk.Entry(patient_info_frame, width=20)
-        self.entry_id.grid(row=2, column=1, sticky="w", padx=3, pady=2)
+        self.entry_id.grid(row=3, column=1, sticky="w", padx=3, pady=2)
         # self.entry_id.insert(0, self.patient_data["id"])
         self.add_placeholder(self.entry_id, self.patient_data["id"])
         
-        ttk.Label(patient_info_frame, text="Visit Date").grid(row=2, column=2, sticky="e")
+        ttk.Label(patient_info_frame, text="Visit Date").grid(row=3, column=2, sticky="e")
         self.entry_visit_date = ttk.Entry(patient_info_frame, width=20)
-        self.entry_visit_date.grid(row=2, column=3, sticky="w", padx=3, pady=2)
+        self.entry_visit_date.grid(row=3, column=3, sticky="w", padx=3, pady=2)
         self.entry_visit_date.insert(0, date.today())
         # self.add_placeholder(self.entry_visit_date, date.today())
         
-        ttk.Label(patient_info_frame, text="**all dates in YYYY-MM-DD format**").grid(row=3, column=1, columnspan=2, sticky="e")
+        ttk.Label(patient_info_frame, text="**all dates in YYYY-MM-DD format**").grid(row=4, column=1, columnspan=2, sticky="e")
         
         # ---------- Clinical frame ----------
         # ------------------------------------
@@ -633,30 +817,25 @@ class PatientReportApp(tk.Tk):
         # self.entry_physician.insert(0, self.patient_data["physician"])
         self.add_placeholder(self.entry_physician, self.patient_data["physician"])
         
-        ttk.Label(clinical_info_frame, text="Therapist").grid(row=1, column=0, sticky="e")
+        ttk.Label(clinical_info_frame, text="Therapist").grid(row=0, column=2, sticky="e")
         self.entry_therapist = ttk.Entry(clinical_info_frame, width=20)
-        self.entry_therapist.grid(row=1, column=1, sticky="w", padx=3, pady=2)
+        self.entry_therapist.grid(row=0, column=3, sticky="w", padx=3, pady=2)
         # self.entry_therapist.insert(0, self.patient_data["therapist"])
         self.add_placeholder(self.entry_therapist, self.patient_data["therapist"])
-
-        ttk.Label(clinical_info_frame, text="Injury").grid(row=2, column=0, sticky="e")
-        self.entry_injury = ttk.Entry(clinical_info_frame, width=20)
-        self.entry_injury.grid(row=2, column=1, sticky="w", padx=3, pady=2)
-        # self.entry_injury.insert(0, self.patient_data["injury"])
-        self.add_placeholder(self.entry_injury, self.patient_data["injury"])
+        
+        ttk.Label(clinical_info_frame, text="Diagnosis").grid(row=1, column=0, sticky="e")
+        self.entry_diagnosis = ttk.Entry(clinical_info_frame, width=20)
+        self.entry_diagnosis.grid(row=1, column=1, sticky="w", padx=3, pady=2)
+        # self.entry_diagnosis.insert(0, self.patient_data["surgery_date"])
+        self.add_placeholder(self.entry_diagnosis, self.patient_data["injury_diagnosis"])
         
         # right
-        ttk.Label(clinical_info_frame, text="Injury Side").grid(row=0, column=2, sticky="e")
+        ttk.Label(clinical_info_frame, text="Injury Side").grid(row=1, column=2, sticky="e")
         self.entry_side = ttk.Entry(clinical_info_frame, width=20)
-        self.entry_side.grid(row=0, column=3, sticky="w", padx=3, pady=2)
+        self.entry_side.grid(row=1, column=3, sticky="w", padx=3, pady=2)
         # self.entry_side.insert(0, self.patient_data["injury_side"])
         self.add_placeholder(self.entry_side, self.patient_data["injury_side"])
 
-        ttk.Label(clinical_info_frame, text="Injury Date").grid(row=1, column=2, sticky="e")
-        self.entry_injury_date = ttk.Entry(clinical_info_frame, width=20)
-        self.entry_injury_date.grid(row=1, column=3, sticky="w", padx=3, pady=2)
-        # self.entry_injury_date.insert(0, self.patient_data["surgery_date"])
-        self.add_placeholder(self.entry_injury_date, self.patient_data["injury_date"])
         
         ttk.Label(clinical_info_frame, text="Surgery Date").grid(row=2, column=0, sticky="e")
         self.entry_surgery_date = ttk.Entry(clinical_info_frame, width=20)
@@ -671,7 +850,7 @@ class PatientReportApp(tk.Tk):
 
         
         ttk.Button(navigation_frame, text="Update Patient Info", width=65, command=lambda: (self.update_data())).grid(row=0, column=0, pady=5, padx=5, sticky="w")
-        ttk.Button(navigation_frame, text="Load GCD Data", width=65, command=lambda: (self.load_gcd_data(), self.update_data())).grid(row=0, column=1, pady=5, padx=5, sticky="w")
+        ttk.Button(navigation_frame, text="Load GCD Data", width=65, command=lambda: (self.load_data(), self.update_data())).grid(row=0, column=1, pady=5, padx=5, sticky="w")
         ttk.Button(navigation_frame, text="Export Summary Report", width=133, command=lambda: self.call_ReportGeneratorfuncs("generate_summary")).grid(row=1, column=0, columnspan=2, ipady=10, pady=5, padx=5, sticky="w")
         ttk.Button(navigation_frame, text="Open Plot Window", width=65, command=self.open_plot_window).grid(row=2, column=0, pady=5, padx=5, sticky="w")
         ttk.Button(navigation_frame, text="Generate Full Report", width=65, command=self.export_pdf).grid(row=2, column=1, pady=5, padx=5, sticky="w")
@@ -710,8 +889,7 @@ class PatientReportApp(tk.Tk):
             
         self.patient_data["physician"]      = self.entry_physician.get()
         self.patient_data["therapist"]      = self.entry_therapist.get()
-        self.patient_data["injury"]         = self.entry_injury.get()
-        self.patient_data["injury_date"]    = self.entry_injury_date.get()
+        self.patient_data["injury_diagnosis"]    = self.entry_diagnosis.get()
         self.patient_data["injury_side"]    = self.entry_side.get()
         self.patient_data["surgery_date"]   = self.entry_surgery_date.get()
         visit_date                          = self.entry_visit_date.get()
@@ -865,7 +1043,7 @@ class PatientReportApp(tk.Tk):
     
         text = (
             f"Patient Summary\n\n"
-            f"Name: {self.patient_data['name']}\n"
+            f"Name: {self.patient_data['lastname'] + ', ' + self.patient_data['firstname']}\n"
             f"ID: {self.patient_data['id']}\n"
             f"Physician: {self.patient_data['physician']}\n"
             f"Injury: {self.patient_data['injury']} ({self.patient_data['injury_side']})\n"
