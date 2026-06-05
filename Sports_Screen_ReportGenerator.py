@@ -28,10 +28,6 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.lib import colors
 
-
-#from shared_utils.get_GCDdata import get_data as gcd
-
-
 # ============================================================
 #  Sample Data (for testing)
 # ============================================================
@@ -190,7 +186,7 @@ class DataHandling:
             elif '.gcd' in path.lower():
                 try:
                     # get GCD data function
-                    data_dict = gcd(path)
+                    data_dict = DataHandling.get_GCDdata(path)
     
                     gcd_data.append({
                         "file_name": filename,
@@ -239,6 +235,39 @@ class DataHandling:
         )
 
         return age
+    
+    def get_GCDdata(gcd_filepath):
+        # ----------------------------- Get data ------------------------------
+            # f = open(folderfile_name +'\\' +gcd_file, 'r+')
+            f = open(gcd_filepath, 'r+')
+            data = f.readlines()
+        # ---------------------------- Get headers ----------------------------
+            # find index of data headers that start with "!"
+            headerIndex = [i for i, e in enumerate(data) if e[0] == "!"]
+           
+        # ----------------------------- Convert data --------------------------
+            data_dict ={}
+            for num in list(range(0,len(headerIndex))):
+                # pull keys and asign to temporary variable
+                key = data[headerIndex[num]][1:-1]
+                # pull data associated with given key, minus "\n" and convert to float
+                try:
+                    # get all values of data for key associated with headerIndex[num] up to next headerIndex[num+1]
+                    val = data[headerIndex[num]+1:headerIndex[num+1]]
+                except:
+                    # same as above but for the reamining set of data for the last key
+                    val = data[headerIndex[num]+1:]
+                        
+                # convert values to float
+                values = []
+                for i in val:
+                    try:
+                        values.append(float(i))    
+                    except:
+                        continue
+                # add key:value pairs to dictionary
+                data_dict.update({key: values})
+            return data_dict  
     
     def parse_gcdData(self, gcd_data):
         '''
@@ -534,7 +563,7 @@ class DataFormatter:
 class ReportGenerator:
     def __init__(self, plot_manager, metrics_calc):
         self.plot_manager   = plot_manager
-        self.metrics_calc   = metrics_calc
+        self.data_handler   = metrics_calc
         self.styles         = getSampleStyleSheet()
         
     # ---- For Spencer
@@ -602,7 +631,7 @@ class ReportGenerator:
 
         # ---------- Page 1 ----------
         visit_date = visits[-1]["visit_date"] if visits else date.today().strftime("%Y-%m-%d")
-        days_out = self.metrics_calc.compute_days_out(visit_date, patient_data.get("surgery_date", ""))
+        days_out = self.data_handler.compute_days_out(visit_date, patient_data.get("surgery_date", ""))
 
         header_text = (
             f"Name: {patient_data.get('name','')} | "
@@ -668,14 +697,13 @@ class PatientReportApp(tk.Tk):
 
         # Classes
         self.plot_manager           = PlotManager()
-        self.metrics_calc           = DataHandling()
+        self.data_handler           = DataHandling()
         self.data_formatter         = DataFormatter()
-        self.report_generator       = ReportGenerator(self.plot_manager, self.metrics_calc)
+        self.report_generator       = ReportGenerator(self.plot_manager, self.data_handler)
 
         # Data
         self.patient_data           = Default_patient_info.copy()
         self.visits                 = SAMPLE_VISITS.copy()
-        self.data_handler           = DataHandling()
         self.loaded_gcd_data        = None
         self.loaded_py_data         = None
 
@@ -915,17 +943,6 @@ class PatientReportApp(tk.Tk):
         ttk.Button(navigation_frame, text="Close App", width=133, command=self.destroy).grid(row=5, column=0, rowspan=2, columnspan=2, ipady=10, pady=5, padx=5, sticky="n")
         
         # ipadx is *internal* spacing as apposed to external with padx
-        
-        # # Right: preview text
-        # right = ttk.Frame(self)
-        # right.grid(row=0, column=1, sticky="nsew", padx=10, pady=10)
-        # self.grid_columnconfigure(1, weight=1)
-        # self.grid_rowconfigure(0, weight=1)
-
-        # ttk.Label(right, text="Report Preview (Text)").grid(row=0, column=0, sticky="w")
-        # self.preview_box = ScrolledText(right, width=70, height=30)
-        # self.preview_box.grid(row=1, column=0, sticky="nsew")
-        # self.refresh_preview()
 
     # --------------------------------------------------------
     def update_data(self):
@@ -971,7 +988,7 @@ class PatientReportApp(tk.Tk):
     # def refresh_preview(self):
     #     # self.preview_box.delete("1.0", tk.END) **removed
     #     visit_date  = self.visits[-1]["visit_date"] if self.visits else ""
-    #     days_out    = self.metrics_calc.compute_days_out(visit_date, self.patient_data.get("surgery_date", ""))
+    #     days_out    = self.data_handler.compute_days_out(visit_date, self.patient_data.get("surgery_date", ""))
 
     #     text = (
     #         f"Name: {self.patient_data['name']}\n"
@@ -1093,7 +1110,7 @@ class PatientReportApp(tk.Tk):
         ax1.axis("off")
     
         visit_date = self.visits[-1]["visit_date"]
-        days_out = self.metrics_calc.compute_days_out(
+        days_out = self.data_handler.compute_days_out(
             visit_date, self.patient_data.get("surgery_date", "")
         )
     
