@@ -393,9 +393,9 @@ class ReportGenerator:
         # os.chdir(parent_folder)
         path = r"C:\Users\SWarshauer\OneDrive - Shriners Children's\Documents\GitHub\Sports_Screening_ReportGenerator/"
         
-        KneeFlexExt_Walk=90
-        KneeFlexExt_DJ = 85
-        KneeFlexExt_HT = 65
+        KneeFlexExt_Walk   = 90
+        KneeFlexExt_DJ     = 85
+        KneeFlexExt_HT     = 65
         doc = DocxTemplate(path + "SportsTemplate.docx")
         green_check = InlineImage(doc, path + "img_green_check.png", width=Mm(5))
         red_x = InlineImage(doc, path + "img_red_x.png", width=Mm(5))
