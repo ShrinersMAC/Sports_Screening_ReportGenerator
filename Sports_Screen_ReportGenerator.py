@@ -10,6 +10,11 @@ from tkinter import ttk, filedialog, messagebox
 from tkinter.scrolledtext import ScrolledText
 import json
 import os
+
+from docxtpl import DocxTemplate, InlineImage
+from docx.shared import Mm
+from docx2pdf import convert
+from pypdf import PdfWriter
 from datetime import datetime, date
 
 import matplotlib
@@ -22,7 +27,8 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.lib import colors
 
-from shared_utils.get_GCDdata import get_data as gcd
+
+#from shared_utils.get_GCDdata import get_data as gcd
 
 
 # ============================================================
@@ -383,9 +389,59 @@ class ReportGenerator:
         
     # ---- For Spencer
     def generate_summary_page(self, patient_data):
-        print("Hey Spencer, fix this")
-        lastname = patient_data["lastname"]
-        print(f'patient last name: {lastname}')
+        # parent_folder = os.path.dirname(os.path.dirname(__file__))
+        # os.chdir(parent_folder)
+        path = r"C:\Users\SWarshauer\OneDrive - Shriners Children's\Documents\GitHub\Sports_Screening_ReportGenerator/"
+        
+        KneeFlexExt_Walk=90
+        KneeFlexExt_DJ = 85
+        KneeFlexExt_HT = 65
+        doc = DocxTemplate(path + "SportsTemplate.docx")
+        green_check = InlineImage(doc, path + "img_green_check.png", width=Mm(5))
+        red_x = InlineImage(doc, path + "img_red_x.png", width=Mm(5))
+        context = {#Patient Info
+                   'Name' : patient_data["lastname"] + ", " + patient_data["firstname"], 
+                   'FirstName' : patient_data["firstname"],
+                   'encdate': date.today(),
+                   'MRN' : patient_data["id"],
+                   'Age' : patient_data["age"],
+                   'DOB' : patient_data["dob"],
+                   'Physician': patient_data["physician"],
+                   'Therapist': patient_data["therapist"],
+                   'SurgeryDate': patient_data["surgery_date"],
+                   'KneeFlexExt_Walk': green_check if KneeFlexExt_Walk < 80 else red_x,
+                   'KneeFlexExt_DJ': green_check if KneeFlexExt_DJ > 80 else red_x,
+                   'KneeFlexExt_HT': green_check if KneeFlexExt_HT > 60 else red_x
+                   }
+
+        doc.render(context)
+        doc.save(path + "SportsReport.docx")
+        print('Word Document Created')
+        convert(path + "SportsReport.docx", path + "SportsReport.pdf", keep_active=True)
+        print('Document Converted to PDF')
+        
+       #  # Initialize the merger tool
+       #  merger = PdfWriter()
+
+       # # Add your PDF files in the exact order you want them combined
+       #  merger.append(path + "SportsReport.pdf")
+       #  merger.append(path + "SportsReport_next.pdf")
+        
+       #  # Save the combined document
+       #  merger.write(path + "combined_output.pdf")
+       #  merger.close()
+        
+       #  print("PDFs combined successfully!") 
+        
+        #print(patient_data["lastname"])
+        
+        
+        #print("Hey Spencer, fix this")
+        #lastname = patient_data["lastname"]
+        
+        
+        
+        #print(f'patient last name: {lastname}')
         return None
     
     def generate_pdf(self, filename, patient_data, visits, tmp_dir="tmp_plots"):
