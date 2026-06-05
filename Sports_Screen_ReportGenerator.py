@@ -297,7 +297,7 @@ class DataHandling:
             fn = gcd_dict["file_name"].split('.')[0][-5:-3]
             
             # pull trial type
-            trial_types = ['DVJ', 'HET', 'Walk']
+            trial_types = ['DVJ', 'HET', 'Walk', 'DJ', 'HT']
             trial = [ttype for ttype in trial_types if ttype in gcd_dict["file_name"]][0]
             
             trial_fn = trial + fn
