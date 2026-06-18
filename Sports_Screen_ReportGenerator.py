@@ -306,7 +306,7 @@ class DataHandling:
             fn = gcd_dict["file_name"].split('.')[0][-5:-3]
             
             # pull trial type
-            trial_types = ['DVJ', 'HET', 'Walk']
+            trial_types = ['DVJ', 'HET', 'Walk', 'DJ', 'HT']
             trial = [ttype for ttype in trial_types if ttype in gcd_dict["file_name"]][0]
             
             trial_fn = trial + fn
@@ -358,6 +358,7 @@ class DataHandling:
 
         Returns: updated dataframe with additional data rows
         '''
+        
         # pull only numeric datatypes and drop the trial column
         numeric_cols = df.drop(columns="trial").select_dtypes(include="number").columns
         
@@ -388,14 +389,91 @@ class DataHandling:
         unimpaired_df = pivoted.xs(unimpaired, axis=1, level="side")
         
         diffs = impaired_df - unimpaired_df
-        
+             
         # convert back to long format
         diff_rows = (
             diffs.reset_index().assign(side="diff")
             )
-        # TODO
-        # append to summary dataframe
-        final_df = pd.concat([summary_df, diff_rows], ignore_index=True)
+        
+        
+        # TODO 
+        # add to config file
+        
+        # Add symmetry rows
+        normative_ranges = pd.DataFrame(
+            [
+                ("DJ", "TrunkObliquity_MIN_IC_PKF", -10, 10),
+                ("HT", "TrunkObliquity_MIN_IC_PKF", -15, 15),
+                ("DJ", "TrunkObliquity_MAX_IC_PKF", -10, 10),
+                ("HT", "TrunkObliquity_MAX_IC_PKF", -15, 15),
+                ("DJ", "TrunkTilt_VAL_PKF", -10, 10),
+                ("HT", "TrunkTilt_VAL_PKF", -15, 15),
+                ("DJ", "PelvicObliquity_VAL_PKF", -10, 10),
+                ("HT", "PelvicObliquity_VAL_PKF", -5, 5),
+                ("DJ", "HipAbAdduct_VAL_PKF", -10, 10),
+                ("HT", "HipAbAdduct_VAL_PKF", -15, 15),
+                ("DJ", "HipAbAdduct_MAX_IC_PKF", -10, 10),
+                ("HT", "HipAbAdduct_MAX_IC_PKF", -15, 15),
+                ("DJ", "HipFlexExt_MAX_IC_PKF", -10, 10),
+                ("HT", "HipFlexExt_MAX_IC_PKF", -15, 15),
+                ("DJ", "KneeValgVar_VAL_PKF", -10, 10),
+                ("HT", "KneeValgVar_VAL_PKF", -15, 15),
+                ("DJ", "KneeValgVar_AVG_IC_PKF", -10, 10),
+                ("HT", "KneeValgVar_AVG_IC_PKF", -15, 15),
+                ("DJ", "KneeFlexExt_MAX_IC_PKF", -10, 10),
+                ("HT", "KneeFlexExt_MAX_IC_PKF", -15, 15),
+                ("DJ", "HipFlexExtMoment_INT_POS_IC_PKF", -10, 10),
+                ("DJ", "KneeFlexExtMoment_INT_POS_IC_PKF", -10, 10),
+                
+            ],
+            columns=["task", "metric", "lower", "upper"]
+        )
+        
+        range_lookup = (
+            normative_ranges.assign(
+                range=lambda x: x["upper"] - x["lower"]
+            )
+            .set_index(["task", "metric"])["range"]
+            .to_dict()
+        )
+
+        symmetry = diffs.copy()
+        
+        for task in symmetry.index:
+        
+            for col in symmetry.columns:
+        
+                # convert
+                # TrunkObliquity_MIN_IC_PKF_mean
+                # ->
+                # TrunkObliquity_MIN_IC_PKF
+                metric = col.rsplit("_", 1)[0]
+        
+                range_val = range_lookup.get((task, metric))
+        
+                if range_val is not None:
+                    symmetry.loc[task, col] = (
+                        diffs.loc[task, col] / range_val
+                    )
+                else:
+                    symmetry.loc[task, col] = np.nan
+        
+        symmetry_rows = (
+            symmetry.reset_index()
+                    .assign(side="symmetry")
+        )
+
+        # ----------------------------------
+        # COMBINE
+        # ----------------------------------
+        
+        final_df = pd.concat(
+            [summary_df, diff_rows, symmetry_rows],
+            ignore_index=True
+        )        
+        
+        # # append to summary dataframe
+        # final_df = pd.concat([summary_df, diff_rows], ignore_index=True)
         
         return final_df
 # ============================================================
