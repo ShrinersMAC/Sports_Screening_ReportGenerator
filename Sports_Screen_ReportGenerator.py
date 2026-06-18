@@ -15,6 +15,7 @@ from docxtpl import DocxTemplate, InlineImage
 from docx.shared import Mm
 from docx2pdf import convert
 from pypdf import PdfWriter
+
 from datetime import datetime, date
 import pandas as pd
 import numpy as np
@@ -22,6 +23,8 @@ import numpy as np
 import matplotlib
 matplotlib.use("Agg")  # For off-screen rendering
 from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
 
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, PageBreak
@@ -188,9 +191,14 @@ class DataHandling:
                 try:
                     # get GCD data function
                     data_dict = DataHandling.get_GCDdata(path)
-    
+                    # find file creation date
+                    # ---- Get file date here
+                    # TODO - need to change to some other way to get eval_date - perhaps st_ctime
+                    eval_date = datetime.fromtimestamp(os.stat(path).st_mtime).strftime("%d-%m-%Y")
+                    
                     gcd_data.append({
                         "file_name": filename,
+                        "eval_date": eval_date,
                         "data_dict": data_dict
                     })
                     
@@ -311,15 +319,16 @@ class DataHandling:
             
             # single value dataframe
             df_single = pd.DataFrame([single_vals])
-            df_single["task"] = trial
-            df_single["file"] = trial_fn
-            df_single["trial"] = tn
-            df_single["side"] = side
+            df_single["task"]   = trial
+            df_single["file"]   = trial_fn
+            df_single["trial"]  = tn
+            df_single["side"]   = side
+            df_single["date"]   = gcd_dict["eval_date"]
             
             # series dataframe
             df_series = pd.DataFrame(series_vals)
-            df_series["file"] = trial_fn
-            df_series["side"] = side
+            df_series["file"]   = trial_fn
+            df_series["side"]   = side
             
             # list of dataframes - each file adds new dataframe
             all_single.append(df_single)
@@ -347,14 +356,14 @@ class DataHandling:
             DESCRIPTION: contains values for joing angle data and binary values
             for hip/knee strategy checks on hips behind heels, knees over toes
 
-        Returns: updated dataframe with additional columns
+        Returns: updated dataframe with additional data rows
         '''
         
         # pull only numeric datatypes and drop the trial column
         numeric_cols = df.drop(columns="trial").select_dtypes(include="number").columns
         
         # calculate mean/sd over n-visits
-        summary_df = (df.groupby(["task", "side"])[numeric_cols]
+        summary_df = (df.groupby(["task", "side", "date"])[numeric_cols]
                         .agg(["min", "max", "mean"])
                         )
         
@@ -473,6 +482,139 @@ class DataHandling:
 class PlotManager:
     def __init__(self):
         pass
+
+    def plot_anatomical_DKV(self, summary_df, cutpoints):
+        """
+        Create a 4x3 grid of bar/scatter plots for:
+            Row 1: Lateral trunk lean (horizontal)
+            Row 2: Pelvic obliquity (vertical)
+            Row 3: Hip abduction – heel touch (horizontal)
+            Row 4: Hip abduction – drop jump (horizontal)
+    
+        Columns:
+            Left:  Right limb (red)
+            Middle: Symmetry
+            Right: Left limb (blue)
+    
+        summary_df:
+            - One row per visit
+            - Columns must include:
+                <measure>_R_mean, <measure>_R_sd, <measure>_R_points
+                <measure>_L_mean, <measure>_L_sd, <measure>_L_points
+                <measure>_sym_mean, <measure>_sym_sd, <measure>_sym_points
+    
+        cutpoints:
+            - Dictionary of cutpoint ranges for each measure
+            - Example:
+                cutpoints["lateral_trunk_lean"]["bad_low"]
+                cutpoints["lateral_trunk_lean"]["bad_high"]
+        """
+    
+        # -------------------------------
+        # 1. Setup figure
+        # -------------------------------
+        fig, axes = plt.subplots(4, 3, figsize=(14, 18))
+        fig.subplots_adjust(hspace=0.4, wspace=0.3)
+    
+        # -------------------------------
+        # 2. Define row/measure mapping
+        # -------------------------------
+        rows = [
+            ("lateral_trunk_lean", "horizontal"),
+            ("pelvic_obliquity", "vertical"),
+            ("hip_abduction_ht", "horizontal"),
+            ("hip_abduction_dj", "horizontal"),
+        ]
+    
+        # -------------------------------
+        # 3. Color maps for multi-visit scatter
+        # -------------------------------
+        red_cmap = LinearSegmentedColormap.from_list("redscale", ["#ffcccc", "red"])
+        blue_cmap = LinearSegmentedColormap.from_list("bluescale", ["#ccccff", "blue"])
+    
+        n_visits = len(summary_df)
+    
+        # -------------------------------
+        # 4. Loop through rows
+        # -------------------------------
+        for row_idx, (measure, orientation) in enumerate(rows):
+    
+            # Extract axes for this row
+            ax_R = axes[row_idx, 0]
+            ax_SYM = axes[row_idx, 1]
+            ax_L = axes[row_idx, 2]
+    
+            # -------------------------------
+            # 4A. Extract data from summary_df
+            # -------------------------------
+            R_mean = summary_df[f"{measure}_R_mean"].values
+            R_sd   = summary_df[f"{measure}_R_sd"].values
+            R_pts  = summary_df[f"{measure}_R_points"].values
+    
+            L_mean = summary_df[f"{measure}_L_mean"].values
+            L_sd   = summary_df[f"{measure}_L_sd"].values
+            L_pts  = summary_df[f"{measure}_L_points"].values
+    
+            SYM_mean = summary_df[f"{measure}_sym_mean"].values
+            SYM_sd   = summary_df[f"{measure}_sym_sd"].values
+            SYM_pts  = summary_df[f"{measure}_sym_points"].values
+    
+            # -------------------------------
+            # 4B. Plot shaded cutpoint regions
+            # -------------------------------
+            low = cutpoints[measure]["bad_low"]
+            high = cutpoints[measure]["bad_high"]
+    
+            for ax in (ax_R, ax_L, ax_SYM):
+                ax.axhspan(low, high, color="lightgray", alpha=0.4)
+    
+            # -------------------------------
+            # 4C. Plot bars (horizontal or vertical)
+            # -------------------------------
+            x = np.arange(n_visits)
+    
+            def plot_bars(ax, mean, sd, color, orientation):
+                if orientation == "horizontal":
+                    ax.barh(x, mean, xerr=sd if n_visits > 1 else None,
+                            color=color, alpha=0.7)
+                else:
+                    ax.bar(x, mean, yerr=sd if n_visits > 1 else None,
+                           color=color, alpha=0.7)
+    
+            plot_bars(ax_R, R_mean, R_sd, "red", orientation)
+            plot_bars(ax_L, L_mean, L_sd, "blue", orientation)
+            plot_bars(ax_SYM, SYM_mean, SYM_sd, "purple", orientation)
+    
+            # -------------------------------
+            # 4D. Scatter points
+            # -------------------------------
+            def plot_scatter(ax, pts, cmap, orientation):
+                for i, visit_pts in enumerate(pts):
+                    if n_visits == 1:
+                        c = cmap(1.0)
+                    else:
+                        c = cmap(i / (n_visits - 1))
+    
+                    if orientation == "horizontal":
+                        ax.scatter(visit_pts, np.full_like(visit_pts, i),
+                                   color=c, edgecolor="black")
+                    else:
+                        ax.scatter(np.full_like(visit_pts, i), visit_pts,
+                                   color=c, edgecolor="black")
+    
+            plot_scatter(ax_R, R_pts, red_cmap, orientation)
+            plot_scatter(ax_L, L_pts, blue_cmap, orientation)
+            plot_scatter(ax_SYM, SYM_pts, plt.cm.Purples, orientation)
+    
+            # -------------------------------
+            # 4E. Titles
+            # -------------------------------
+            ax_R.set_title(f"{measure.replace('_', ' ').title()} – Right")
+            ax_SYM.set_title("Symmetry")
+            ax_L.set_title(f"{measure.replace('_', ' ').title()} – Left")
+    
+        return fig
+   
 
     def plot_errbar_data(self, fig, visits, measure_keys, title_prefix):
         """
@@ -703,6 +845,13 @@ class ReportGenerator:
         return None
     
     def generate_pdf(self, filename, patient_data, visits, tmp_dir="tmp_plots"):
+        # TODO Pretty sure all of this can be greatly simplified
+        '''
+        Likely only need to pull the figures that have already been created, 
+        then perhaps combine each page together.
+        
+        I'm currently unsure of the need to apply all this doc/story stuff here.
+        '''
         os.makedirs(tmp_dir, exist_ok=True)
 
         doc = SimpleDocTemplate(filename, pagesize=letter)
@@ -744,6 +893,7 @@ class ReportGenerator:
         story.append(Paragraph("<b>Dynamic Knee Valgus Summary</b>", self.styles["Heading2"]))
         story.append(Spacer(1, 0.2 * inch))
 
+        # ---- Add new plot_anatomical function here
         dkv_fig = self.plot_manager.dkv_errbar_figure(visits)
         dkv_path = os.path.join(tmp_dir, "dynamic_knee_valgus_page.png")
         dkv_fig.savefig(dkv_path, dpi=150, bbox_inches="tight")
@@ -772,7 +922,7 @@ class PatientReportApp(tk.Tk):
         super().__init__()
 
         self.title("Patient Report Generator")
-        self.geometry("845x430")
+        self.geometry("855x515")
 
         # Classes
         self.plot_manager           = PlotManager()
@@ -795,6 +945,7 @@ class PatientReportApp(tk.Tk):
         
         # open file explorer and pick data
         # self.load_data()
+    # ---- Can be done a better way
     def call_ReportGeneratorfuncs(self, function_to_call):
         '''
         SUMMARY: need to call functions across apps through a specific function call
@@ -879,10 +1030,9 @@ class PatientReportApp(tk.Tk):
     def load_data(self):
         # need to use a data handler function to get data from the other class in a clean way
         # ---- call function across classes
+        # TODO Need to fix error handling when no data is selected
         gcd_data, py_data = self.data_handler.getData_dialog()
         
-        
-    
         if gcd_data:
             # assign to self to use across the app
             single_df, series_df    = self.data_handler.parse_gcdData(gcd_data)
@@ -919,7 +1069,7 @@ class PatientReportApp(tk.Tk):
         # ---------- Patient frame ----------
         # -----------------------------------
         patient_info_frame = tk.LabelFrame(self, text='Patient Information')
-        patient_info_frame.grid(row=0, column=0, sticky='nsew', padx=10, pady=5) # in row 1 column 1 in frame 1
+        patient_info_frame.grid(row=0, column=0, sticky='nsew', padx=5, pady=5) # in row 1 column 1 in frame 1
 
         # Patient/session fields
         ttk.Label(patient_info_frame, text="Last Name").grid(row=0, column=0, sticky="e")
@@ -971,7 +1121,7 @@ class PatientReportApp(tk.Tk):
         # ---------- Clinical frame ----------
         # ------------------------------------
         clinical_info_frame = tk.LabelFrame(self, text='Clinical Information')
-        clinical_info_frame.grid(row=0, column=1, sticky='nsew', padx=10, pady=5) # in row 1 column 1 in frame 1
+        clinical_info_frame.grid(row=0, column=1, sticky='nsew', padx=5, pady=5) # in row 1 column 1 in frame 1
 
         # left
         ttk.Label(clinical_info_frame, text="Physician").grid(row=0, column=0, sticky="e")
@@ -1006,20 +1156,33 @@ class PatientReportApp(tk.Tk):
         # self.entry_surgery_date.insert(0, self.patient_data["surgery_date"])
         self.add_placeholder(self.entry_surgery_date, self.patient_data["surgery_date"])
 
+        # -------- Load & update frame ---------
+        # --------------------------------------
+        updateload_frame = tk.LabelFrame(self, text='Update & Load Data')
+        updateload_frame.grid(row=1, column=0, columnspan=1, sticky='nsew', padx=5, pady=5) # in row 1 column 1 in frame 1
+        ttk.Button(updateload_frame, text="Update Patient Info", width=65, command=lambda: (self.update_data())).grid(row=0, column=0, ipady=5, pady=5, padx=5, sticky="news")
+        ttk.Button(updateload_frame, text="Load GCD Data", width=65, command=lambda: (self.load_data(), self.update_data())).grid(row=1, column=0, ipady=5, pady=5, padx=5, sticky="news")
+        
+        # --------- Preview data frame ---------
+        # --------------------------------------
+        previewdata_frame = tk.LabelFrame(self, text='Preview Data')
+        previewdata_frame.grid(row=1, column=1, sticky='nsew', padx=5, pady=5)
+        ttk.Button(previewdata_frame, text="Export Summary Report", width=65, command=lambda: self.call_ReportGeneratorfuncs("generate_summary")).grid(row=0, column=0, ipady=5, pady=5, padx=5, sticky="news")
+        ttk.Button(previewdata_frame, text="Open Plot Window", width=65, command=self.open_plot_window).grid(row=1, column=0, ipady=5, pady=5, padx=5, sticky="news")
+        
+        # -------- Generate report frame -------
+        # --------------------------------------
+        generatereport_frame = tk.LabelFrame(self, text='Generate Report & Save')
+        generatereport_frame.grid(row=2, column=0, columnspan=2, sticky='nsew', padx=5, pady=5)
+        ttk.Button(generatereport_frame, text="Generate Full Report", width=135, command=self.export_pdf).grid(row=0, column=0, ipady=5, pady=5, padx=5, sticky="news")
+        ttk.Button(generatereport_frame, text="Save Data", width=135, command=self.save_json_html).grid(row=1, column=0, columnspan=2, ipady=5, pady=5, padx=5, sticky="news")
+        
         # ---------- Navigation frame ----------
         # --------------------------------------
         navigation_frame = tk.LabelFrame(self, text='Navigation')
-        navigation_frame.grid(row=1, column=0, columnspan=2, sticky='nsew', padx=10, pady=5) # in row 1 column 1 in frame 1
-
-        
-        ttk.Button(navigation_frame, text="Update Patient Info", width=65, command=lambda: (self.update_data())).grid(row=0, column=0, pady=5, padx=5, sticky="w")
-        ttk.Button(navigation_frame, text="Load GCD Data", width=65, command=lambda: (self.load_data(), self.update_data())).grid(row=0, column=1, pady=5, padx=5, sticky="w")
-        ttk.Button(navigation_frame, text="Export Summary Report", width=133, command=lambda: self.call_ReportGeneratorfuncs("generate_summary")).grid(row=1, column=0, columnspan=2, ipady=10, pady=5, padx=5, sticky="w")
-        ttk.Button(navigation_frame, text="Open Plot Window", width=65, command=self.open_plot_window).grid(row=2, column=0, pady=5, padx=5, sticky="w")
-        ttk.Button(navigation_frame, text="Generate Full Report", width=65, command=self.export_pdf).grid(row=2, column=1, pady=5, padx=5, sticky="w")
-        ttk.Button(navigation_frame, text="Save Data", width=133, command=self.save_json_html).grid(row=3, column=0, columnspan=2, pady=5, padx=5, sticky="n")
-        ttk.Button(navigation_frame, text="Reset to Default", width=133, command=self.reset_app).grid(row=4, column=0, columnspan=2, pady=5, padx=5, sticky="n")
-        ttk.Button(navigation_frame, text="Close App", width=133, command=self.destroy).grid(row=5, column=0, rowspan=2, columnspan=2, ipady=10, pady=5, padx=5, sticky="n")
+        navigation_frame.grid(row=3, column=0, columnspan=2, sticky='nsew', padx=5, pady=5)
+        ttk.Button(navigation_frame, text="Reset to Default", width=135, command=self.reset_app).grid(row=0, column=0, columnspan=2, ipady=5, pady=5, padx=5, sticky="news")
+        ttk.Button(navigation_frame, text="Close App", width=135, command=self.destroy).grid(row=5, column=0, rowspan=1, columnspan=2, ipady=5, pady=5, padx=5, sticky="news")
         
         # ipadx is *internal* spacing as apposed to external with padx
 
@@ -1213,7 +1376,10 @@ class PatientReportApp(tk.Tk):
         self.preview_figures[1] = fig1
     
         # PAGE 2 — DKV plots
-        self.preview_figures[2] = self.plot_manager.dkv_errbar_figure(self.visits)
+        cutpoints = {
+            }
+        self.preview_figures[2] = self.plot_manager.plot_anatomical_DKV(self.loaded_summary_df, cutpoints)
+        # self.preview_figures[2] = self.plot_manager.dkv_errbar_figure(self.visits)
     
         # PAGE 3 — Hip vs Knee plots
         self.preview_figures[3] = self.plot_manager.hks_errbar_figure(self.visits)
