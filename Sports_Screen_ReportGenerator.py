@@ -37,7 +37,7 @@ from reportlab.lib.units import inch
 from reportlab.lib import colors
 
 # Site
-site = "SPR"
+site = "PHL"
 
 # Database file-path
 root_path = r"\\phl-fs-sh08.shriners.cc\MAC Headquarters\_Model standardization\SportsScreen_Data\raw"
@@ -520,6 +520,11 @@ class DataHandling:
             
         # concatenate all trial dataframes to a single dataframe
         current_df = pd.concat(all_single, axis=0, ignore_index=True)
+        
+        # replace column names if necessary
+        current_df["task"] = current_df["task"].replace({"DJ": "DVJ"})
+        current_df["task"] = current_df["task"].replace({"HT": "HET"})
+        
         # force 0,1 columns to binary
         bool_cols = current_df.columns[current_df.isin([0,1]).all()]
         current_df[bool_cols] = current_df[bool_cols].astype(bool)
@@ -1387,8 +1392,8 @@ class ReportGenerator:
     def generate_summary_page(self, summary_df, patient_data):
         # parent_folder = os.path.dirname(os.path.dirname(__file__))
         # os.chdir(parent_folder)
-        # path = r"C:\Users\SWarshauer\OneDrive - Shriners Children's\Documents\GitHub\Sports_Screening_ReportGenerator/"
-        path = r"\\spr-fs-app01.shriners.cc\collab\Mal_Share\ViconDatabase\Python Code\Sports_Screening_ReportGenerator/"
+        path = r"C:\Users\SWarshauer\OneDrive - Shriners Children's\Documents\GitHub\Sports_Screening_ReportGenerator/"
+        #path = r"\\spr-fs-app01.shriners.cc\collab\Mal_Share\ViconDatabase\Python Code\Sports_Screening_ReportGenerator/"
         
         # pull cutpoints and grab data that is needed
         DVJ_HAB_mean = summary_df[(summary_df["task"] == "DVJ") & (summary_df["status"] == "diff") & (summary_df["stat"] == "mean")]["HipAbAdduct_MAX_IC_PKF"]
