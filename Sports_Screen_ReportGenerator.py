@@ -45,36 +45,42 @@ root_path = r"\\phl-fs-sh08.shriners.cc\MAC Headquarters\_Model standardization\
 # ============================================================
 #  Sample Data (for testing)
 # ============================================================
+plot_rows = [
+    ("TrunkObliquity_MIN_IC_PKF", "HET", "horizontal"),
+    ("PelvicObliquity_VAL_PKF", "HET", "vertical"),
+    ("HipAbAdduct_MAX_IC_PKF", "HET", "horizontal"),
+    ("HipAbAdduct_MAX_IC_PKF", "DVJ", "horizontal"),
+]
 global cutPoint_ranges
 cutPoint_ranges = pd.DataFrame(
     [
-        ("DVJ", "TrunkObliquity_MIN_IC_PKF", -10, 10),
-        ("HET", "TrunkObliquity_MIN_IC_PKF", -10, 10),
-        ("DVJ", "TrunkObliquity_MAX_IC_PKF", -10, 10),
-        ("HET", "TrunkObliquity_MAX_IC_PKF", -10, 10),
-        ("DVJ", "TrunkTilt_VAL_PKF", -10, 10),
-        ("HET", "TrunkTilt_VAL_PKF", -15, 15),
-        ("DVJ", "PelvicObliquity_VAL_PKF", -10, 10),
-        ("HET", "PelvicObliquity_VAL_PKF", -5, 5),
-        ("DVJ", "HipAbAdduct_VAL_PKF", -10, 10),
-        ("HET", "HipAbAdduct_VAL_PKF", -15, 15),
-        ("DVJ", "HipAbAdduct_MAX_IC_PKF", -10, 10),
-        ("HET", "HipAbAdduct_MAX_IC_PKF", -15, 15),
-        ("DVJ", "HipFlexExt_MAX_IC_PKF", -10, 10),
-        ("HET", "HipFlexExt_MAX_IC_PKF", -15, 15),
-        ("DVJ", "KneeValgVar_VAL_PKF", -10, 10),
-        ("HET", "KneeValgVar_VAL_PKF", -15, 15),
-        ("DVJ", "KneeValgVar_AVG_IC_PKF", -10, 10),
-        ("HET", "KneeValgVar_AVG_IC_PKF", -15, 15),
-        ("DVJ", "KneeFlexExt_MAX_IC_PKF", -10, 10),
-        ("HET", "KneeFlexExt_MAX_IC_PKF", -15, 15),
-        ("DVJ", "HipFlexExtMoment_INT_POS_IC_PKF", -10, 10),
-        ("DVJ", "KneeFlexExtMoment_INT_POS_IC_PKF", -10, 10),
+        ("DVJ", "TrunkObliquity_MIN_IC_PKF",        np.nan, np.nan, np.nan),
+        ("HET", "TrunkObliquity_MIN_IC_PKF",        -10,    10,     20),        # DKV
+        ("DVJ", "TrunkObliquity_MAX_IC_PKF",        np.nan, np.nan, np.nan),
+        ("HET", "TrunkObliquity_MAX_IC_PKF",        np.nan, np.nan, np.nan),
+        ("DVJ", "TrunkTilt_VAL_PKF",                np.nan, np.nan, np.nan),
+        ("HET", "TrunkTilt_VAL_PKF",                np.nan, np.nan, np.nan),
+        ("DVJ", "PelvicObliquity_VAL_PKF",          np.nan, np.nan, np.nan),
+        ("HET", "PelvicObliquity_VAL_PKF",          -5,     5,      10),         # DKV
+        ("DVJ", "HipAbAdduct_VAL_PKF",              np.nan, np.nan, np.nan),
+        ("HET", "HipAbAdduct_VAL_PKF",              np.nan, np.nan, np.nan),
+        ("DVJ", "HipAbAdduct_MAX_IC_PKF",           np.nan, 0,      10),        # DKV
+        ("HET", "HipAbAdduct_MAX_IC_PKF",           np.nan, 15,     15),        # DKV
+        ("DVJ", "HipFlexExt_MAX_IC_PKF",            np.nan, np.nan, np.nan),
+        ("HET", "HipFlexExt_MAX_IC_PKF",            np.nan, np.nan, np.nan),
+        ("DVJ", "KneeValgVar_VAL_PKF",              np.nan, np.nan, np.nan),
+        ("HET", "KneeValgVar_VAL_PKF",              np.nan, np.nan, np.nan),
+        ("DVJ", "KneeValgVar_AVG_IC_PKF",           np.nan, np.nan, np.nan),
+        ("HET", "KneeValgVar_AVG_IC_PKF",           np.nan, np.nan, np.nan),
+        ("DVJ", "KneeFlexExt_MAX_IC_PKF",           np.nan, np.nan, np.nan),
+        ("HET", "KneeFlexExt_MAX_IC_PKF",           np.nan, np.nan, np.nan),
+        ("DVJ", "HipFlexExtMoment_INT_POS_IC_PKF",  np.nan, np.nan, np.nan),
+        ("DVJ", "KneeFlexExtMoment_INT_POS_IC_PKF", np.nan, np.nan, np.nan),
         
     ],
-    columns=["task", "metric", "lower", "upper"]
+    columns=["task", "metric", "lower", "upper", "range"]
 )
-cutPoint_ranges["range"] = cutPoint_ranges["upper"] - cutPoint_ranges["lower"]
+# cutPoint_ranges["range"] = cutPoint_ranges["upper"] - cutPoint_ranges["lower"]
 
 Default_patient_info = {
     "lastname":         "Doe",
@@ -492,6 +498,7 @@ class DataHandling:
             trial_types = ['DVJ', 'HET', 'Walk', 'DJ', 'HT']
             trial = [ttype for ttype in trial_types if ttype in gcd_dict["file_name"]][0]
             
+            
             trial_fn = trial + fn
             side = "Right" if "-R" in gcd_dict["file_name"] else "Left"
             
@@ -520,6 +527,11 @@ class DataHandling:
             
         # concatenate all trial dataframes to a single dataframe
         current_df = pd.concat(all_single, axis=0, ignore_index=True)
+        
+        # replace column names if necessary
+        current_df["task"] = current_df["task"].replace({"DJ": "DVJ"})
+        current_df["task"] = current_df["task"].replace({"HT": "HET"})
+
         # force 0,1 columns to binary
         bool_cols = current_df.columns[current_df.isin([0,1]).all()]
         current_df[bool_cols] = current_df[bool_cols].astype(bool)
@@ -620,8 +632,6 @@ class DataHandling:
         # metrics = summary_df.select_dtypes(include="number").columns
         # pivoted = summary_df.pivot(index="task", columns=["side", "stat"], values=metrics)
         
-        
-            
         # # subtract
         # impaired_df = pivoted.xs(impaired, axis=1, level="side")
         # unimpaired_df = pivoted.xs(unimpaired, axis=1, level="side")
@@ -633,42 +643,6 @@ class DataHandling:
         #     diffs.reset_index().assign(side="diff")
         #     )
         
-        # # Spencers symmetry calcs
-        # range_lookup = (
-        #     cutPoint_ranges.assign(
-        #         range=lambda x: x["upper"] - x["lower"]
-        #     )
-        #     .set_index(["task", "metric"])["range"]
-        #     .to_dict()
-        # )
-
-        # # copy the diffs dataframe to calculate symmetry
-        # symmetry = diffs.copy()
-        
-        # for task in symmetry.index:
-        #     for col in symmetry.columns:
-        #         # convert
-        #         # TrunkObliquity_MIN_IC_PKF_mean -> TrunkObliquity_MIN_IC_PKF
-        #         metric = col.rsplit("_", 1)[0]
-        #         range_val = range_lookup.get((task, metric))
-        
-        #         if range_val is not None:
-        #             symmetry.loc[task, col] = (
-        #                 diffs.loc[task, col] / range_val
-        #             )
-        #         else:
-        #             symmetry.loc[task, col] = np.nan
-        
-        # symmetry_rows = (
-        #     symmetry.reset_index()
-        #             .assign(side="symmetry")
-        # )
-
-        # # add each set of dataframe rows to the summary dataframe       
-        # final_df = pd.concat(
-        #     [summary_df, diff_rows, symmetry_rows],
-        #     ignore_index=True
-        # )        
         
         final_df = diff_df
         return final_df
@@ -931,7 +905,7 @@ class PlotManager:
         # -------------------------------
         # 1. Setup figure
         # -------------------------------
-        # ---- Use symmetry
+        # ---- Choose symmetry
         use_sym = True
         if use_sym:
             fig, axes = plt.subplots(4, 3, figsize=(8.5, 11))
@@ -1017,9 +991,10 @@ class PlotManager:
             # 4A. Establish cut-point ranges for measure
             # -------------------------------
             cutpoint = cutpoints[(cutpoints["metric"] == measure) & (cutpoints["task"] == task)]
-            low = cutpoint["lower"].values
-            high = cutpoint["upper"].values
-            cp_range = high - low
+            # need to convert to float, because int() can't be nan, but float can
+            low         = float(cutpoint["lower"].values[0])
+            high        = float(cutpoint["upper"].values[0])
+            cp_range    = float(cutpoint["range"].values[0])
             
             # -------------------------------
             # 4A. Extract data from summary_df
@@ -1054,9 +1029,38 @@ class PlotManager:
             # -------------------------------
             # 4B. Plot shaded cutpoint regions
             # -------------------------------
-            # TODO - need to update gray shaded areas, in plot_bars function
-            # for ax in (ax_R, ax_L):
-            #     ax.axhspan(low, high, color="lightgray", alpha=0.4)
+            def add_shade(ax, cp, orientation):
+                
+                if not cp:
+                    return None
+                
+                y_lower = ax.get_ylim()[0]
+                y_upper = ax.get_ylim()[1]
+                
+                x_lower = ax.get_xlim()[0]
+                x_upper = ax.get_xlim()[1]
+                
+                if orientation == "horizontal":
+                    # vspan, give both values as x-coordinates
+                    if cp[0] == np.nan and cp[1] != np.nan:
+                        # shade above only
+                        ax.axvspan(cp[1], x_upper, color="lightgray", alpha=0.4)
+                    elif cp[0] != np.nan and cp[1] == np.nan:
+                        # shade below only
+                        ax.axvspan(x_lower, cp[0], color="lightgray", alpha=0.4)
+                    else:
+                        # shade above and below
+                        ax.axvspan(cp[1], x_upper, color="lightgray", alpha=0.4)
+                        ax.axvspan(x_lower, cp[0], color="lightgray", alpha=0.4)
+                else:
+                    # hspan, give both values as y-coordinates
+                    if cp[0] == np.nan and cp[1] != np.nan:
+                        ax.axhspan(cp[1], y_upper, color="lightgray", alpha=0.4)
+                    elif cp[0] != np.nan and cp[1] == np.nan:
+                        ax.axhspan(y_lower, cp[0], color="lightgray", alpha=0.4)
+                    else:
+                        ax.axhspan(cp[1], y_upper, color="lightgray", alpha=0.4)
+                        ax.axhspan(y_lower, cp[0], color="lightgray", alpha=0.4)
     
             # -------------------------------
             # 4C. Plot bars (horizontal or vertical)
@@ -1081,8 +1085,10 @@ class PlotManager:
                     ax.set_yticks([])
                     ax.set_yticklabels([])
                     
-                    # zero line
+                    # zero line and shaded areas
                     ax.axvline(0, color="black", linewidth=2.5)
+                    add_shade(ax, cp, orientation)
+                    
                     
                     # cut points
                     if cp:
@@ -1106,6 +1112,7 @@ class PlotManager:
                     
                     # zero line
                     ax.axhline(0, color="black", linewidth=2.5)
+                    add_shade(ax, cp, orientation)
                     
                     # trun off axis labels where bars lie
                     ax.set_xticks([])
@@ -1124,8 +1131,8 @@ class PlotManager:
                         ax.yaxis.set_label_position("right")
                     
     
-            plot_bars(ax_R, R_mean, R_sd, red_cmap, orientation, [low, high], n_visits, "right")
-            plot_bars(ax_L, L_mean, L_sd, blue_cmap, orientation, [low, high], n_visits, "left")
+            plot_bars(ax_R, R_mean, R_sd, red_cmap, orientation, [low, high, cp_range], n_visits, "right")
+            plot_bars(ax_L, L_mean, L_sd, blue_cmap, orientation, [low, high, cp_range], n_visits, "left")
             if use_sym:
                 plot_bars(ax_SYM, SYM_mean, 0, black_cmap, "horizontal", [], n_visits, "sym")
     
