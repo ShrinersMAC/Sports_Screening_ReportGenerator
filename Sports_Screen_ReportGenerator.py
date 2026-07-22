@@ -37,7 +37,7 @@ from reportlab.lib.units import inch
 from reportlab.lib import colors
 
 # Site
-site = "SPR"
+site = "PHL"
 
 # Database file-path
 root_path = r"\\phl-fs-sh08.shriners.cc\MAC Headquarters\_Model standardization\SportsScreen_Data\raw"
@@ -55,10 +55,9 @@ global cutPoint_ranges
 cutPoint_ranges = pd.DataFrame(
     [
         ("DVJ", "TrunkObliquity_MIN_IC_PKF",        np.nan, np.nan, np.nan),
-        ("HET", "TrunkObliquity_MIN_IC_PKF",        -10,    10,     20),        # DKV
+        ("HET", "TrunkObliquity_VAL_PKF",           -10,    10,     20),        # DKV
         ("DVJ", "TrunkObliquity_MAX_IC_PKF",        np.nan, np.nan, np.nan),
-        ("HET", "TrunkObliquity_MAX_IC_PKF",        np.nan, np.nan, np.nan),
-        ("DVJ", "TrunkTilt_VAL_PKF",                np.nan, np.nan, np.nan),
+        ("DVJ", "TrunkTilt_MAX_IC_PKF",             np.nan, np.nan, np.nan),
         ("HET", "TrunkTilt_VAL_PKF",                np.nan, np.nan, np.nan),
         ("DVJ", "PelvicObliquity_VAL_PKF",          np.nan, np.nan, np.nan),
         ("HET", "PelvicObliquity_VAL_PKF",          -5,     5,      10),         # DKV
@@ -153,9 +152,11 @@ single_measures = [
     "HipAbAdduct_VAL_PKF",
     "KneeValgVar_VAL_PKF",
     "PelvicObliquity_VAL_PKF",
+    "TrunkObliquity_VAL_PKF",
     "TrunkObliquity_MAX_IC_PKF",
     "TrunkObliquity_MIN_IC_PKF",
     "TrunkTilt_VAL_PKF",
+    "TrunkTilt_MAX_IC_PKF",
     "HipBehindHeel",
     "AnkleBehindKnee",
     "KneeBehindShoeFront"
@@ -531,6 +532,7 @@ class DataHandling:
         # replace column names if necessary
         current_df["task"] = current_df["task"].replace({"DJ": "DVJ"})
         current_df["task"] = current_df["task"].replace({"HT": "HET"})
+        
 
         # force 0,1 columns to binary
         bool_cols = current_df.columns[current_df.isin([0,1]).all()]
@@ -1394,38 +1396,162 @@ class ReportGenerator:
     def generate_summary_page(self, summary_df, patient_data):
         # parent_folder = os.path.dirname(os.path.dirname(__file__))
         # os.chdir(parent_folder)
-        # path = r"C:\Users\SWarshauer\OneDrive - Shriners Children's\Documents\GitHub\Sports_Screening_ReportGenerator/"
-        path = r"\\spr-fs-app01.shriners.cc\collab\Mal_Share\ViconDatabase\Python Code\Sports_Screening_ReportGenerator/"
+        path = r"C:\Users\SWarshauer\OneDrive - Shriners Children's\Documents\GitHub\Sports_Screening_ReportGenerator/"
+        #path = r"\\spr-fs-app01.shriners.cc\collab\Mal_Share\ViconDatabase\Python Code\Sports_Screening_ReportGenerator/"
         
         # pull cutpoints and grab data that is needed
-        DVJ_HAB_mean = summary_df[(summary_df["task"] == "DVJ") & (summary_df["status"] == "diff") & (summary_df["stat"] == "mean")]["HipAbAdduct_MAX_IC_PKF"]
+        #DROP VERTICAL JUMP MEASURES
+        DVJ_HAB_mean_diff = round(summary_df[(summary_df["task"] == "DVJ") & (summary_df["status"] == "diff") & (summary_df["stat"] == "mean")]["HipAbAdduct_MAX_IC_PKF"].item(),2)
+        DVJ_HAB_mean_left = round(summary_df[(summary_df["task"] == "DVJ") & (summary_df["status"] == "impaired") & (summary_df["stat"] == "mean")]["HipAbAdduct_MAX_IC_PKF"].item(),2)
+        DVJ_HAB_mean_right = round(summary_df[(summary_df["task"] == "DVJ") & (summary_df["status"] == "unimpaired") & (summary_df["stat"] == "mean")]["HipAbAdduct_MAX_IC_PKF"].item(),2)
         
-        KneeFlexExt_Walk   = 90
-        KneeFlexExt_DJ     = 85
-        KneeFlexExt_HT     = 65
+        DVJ_KVARVAL_mean_diff = round(summary_df[(summary_df["task"] == "DVJ") & (summary_df["status"] == "diff") & (summary_df["stat"] == "mean")]["KneeValgVar_AVG_IC_PKF"].item(),2)
+        DVJ_KVARVAL_mean_left = round(summary_df[(summary_df["task"] == "DVJ") & (summary_df["status"] == "impaired") & (summary_df["stat"] == "mean")]["KneeValgVar_AVG_IC_PKF"].item(),2)
+        DVJ_KVARVAL_mean_right = round(summary_df[(summary_df["task"] == "DVJ") & (summary_df["status"] == "unimpaired") & (summary_df["stat"] == "mean")]["KneeValgVar_AVG_IC_PKF"].item(),2)
+
+        DVJ_KFLEX_mean_diff = round(summary_df[(summary_df["task"] == "DVJ") & (summary_df["status"] == "diff") & (summary_df["stat"] == "mean")]["KneeFlexExt_MAX_IC_PKF"].item(),2)
+        DVJ_KFLEX_mean_left = round(summary_df[(summary_df["task"] == "DVJ") & (summary_df["status"] == "impaired") & (summary_df["stat"] == "mean")]["KneeFlexExt_MAX_IC_PKF"].item(),2)
+        DVJ_KFLEX_mean_right = round(summary_df[(summary_df["task"] == "DVJ") & (summary_df["status"] == "unimpaired") & (summary_df["stat"] == "mean")]["KneeFlexExt_MAX_IC_PKF"].item(),2)
+
+        DVJ_HFLEX_mean_diff = round(summary_df[(summary_df["task"] == "DVJ") & (summary_df["status"] == "diff") & (summary_df["stat"] == "mean")]["HipFlexExt_MAX_IC_PKF"].item(),2)
+        DVJ_HFLEX_mean_left = round(summary_df[(summary_df["task"] == "DVJ") & (summary_df["status"] == "impaired") & (summary_df["stat"] == "mean")]["HipFlexExt_MAX_IC_PKF"].item(),2)
+        DVJ_HFLEX_mean_right = round(summary_df[(summary_df["task"] == "DVJ") & (summary_df["status"] == "unimpaired") & (summary_df["stat"] == "mean")]["HipFlexExt_MAX_IC_PKF"].item(),2)
+
+        DVJ_TTILT_mean_diff = round(summary_df[(summary_df["task"] == "DVJ") & (summary_df["status"] == "diff") & (summary_df["stat"] == "mean")]["TrunkTilt_MAX_IC_PKF"].item(),2)
+        DVJ_TTILT_mean_left = round(summary_df[(summary_df["task"] == "DVJ") & (summary_df["status"] == "impaired") & (summary_df["stat"] == "mean")]["TrunkTilt_MAX_IC_PKF"].item(),2)
+        DVJ_TTILT_mean_right = round(summary_df[(summary_df["task"] == "DVJ") & (summary_df["status"] == "unimpaired") & (summary_df["stat"] == "mean")]["TrunkTilt_MAX_IC_PKF"].item(),2)
+
+        #HEEL TOUCH
+        HET_HAB_mean_diff = round(summary_df[(summary_df["task"] == "HET") & (summary_df["status"] == "diff") & (summary_df["stat"] == "mean")]["HipAbAdduct_VAL_PKF"].item(),2)
+        HET_HAB_mean_left = round(summary_df[(summary_df["task"] == "HET") & (summary_df["status"] == "impaired") & (summary_df["stat"] == "mean")]["HipAbAdduct_VAL_PKF"].item(),2)
+        HET_HAB_mean_right = round(summary_df[(summary_df["task"] == "HET") & (summary_df["status"] == "unimpaired") & (summary_df["stat"] == "mean")]["HipAbAdduct_VAL_PKF"].item(),2)
+        
+        HET_KVARVAL_mean_diff = round(summary_df[(summary_df["task"] == "HET") & (summary_df["status"] == "diff") & (summary_df["stat"] == "mean")]["KneeValgVar_VAL_PKF"].item(),2)
+        HET_KVARVAL_mean_left = round(summary_df[(summary_df["task"] == "HET") & (summary_df["status"] == "impaired") & (summary_df["stat"] == "mean")]["KneeValgVar_VAL_PKF"].item(),2)
+        HET_KVARVAL_mean_right = round(summary_df[(summary_df["task"] == "HET") & (summary_df["status"] == "unimpaired") & (summary_df["stat"] == "mean")]["KneeValgVar_VAL_PKF"].item(),2)
+
+        HET_POBLQ_mean_diff = round(summary_df[(summary_df["task"] == "HET") & (summary_df["status"] == "diff") & (summary_df["stat"] == "mean")]["PelvicObliquity_VAL_PKF"].item(),2)
+        HET_POBLQ_mean_left = round(summary_df[(summary_df["task"] == "HET") & (summary_df["status"] == "impaired") & (summary_df["stat"] == "mean")]["PelvicObliquity_VAL_PKF"].item(),2)
+        HET_POBLQ_mean_right = round(summary_df[(summary_df["task"] == "HET") & (summary_df["status"] == "unimpaired") & (summary_df["stat"] == "mean")]["PelvicObliquity_VAL_PKF"].item(),2)
+        
+        HET_TOBLQ_mean_diff = round(summary_df[(summary_df["task"] == "HET") & (summary_df["status"] == "diff") & (summary_df["stat"] == "mean")]["TrunkObliquity_VAL_PKF"].item(),2)
+        HET_TOBLQ_mean_left = round(summary_df[(summary_df["task"] == "HET") & (summary_df["status"] == "impaired") & (summary_df["stat"] == "mean")]["TrunkObliquity_VAL_PKF"].item(),2)
+        HET_TOBLQ_mean_right = round(summary_df[(summary_df["task"] == "HET") & (summary_df["status"] == "unimpaired") & (summary_df["stat"] == "mean")]["TrunkObliquity_VAL_PKF"].item(),2)
+
+        HET_TTILT_mean_diff = round(summary_df[(summary_df["task"] == "HET") & (summary_df["status"] == "diff") & (summary_df["stat"] == "mean")]["TrunkTilt_VAL_PKF"].item(),2)
+        HET_TTILT_mean_left = round(summary_df[(summary_df["task"] == "HET") & (summary_df["status"] == "impaired") & (summary_df["stat"] == "mean")]["TrunkTilt_VAL_PKF"].item(),2)
+        HET_TTILT_mean_right = round(summary_df[(summary_df["task"] == "HET") & (summary_df["status"] == "unimpaired") & (summary_df["stat"] == "mean")]["TrunkTilt_VAL_PKF"].item(),2)
+
+        # KneeFlexExt_Walk   = 90
+        # KneeFlexExt_DJ     = 85
+        # KneeFlexExt_HT     = 65
         doc = DocxTemplate(path + "SportsTemplate.docx")
         green_check = InlineImage(doc, path + "img_green_check.png", width=Mm(5))
         red_x = InlineImage(doc, path + "img_red_x.png", width=Mm(5))
         context = {#Patient Info
-                   'Name' : patient_data["lastname"] + ", " + patient_data["firstname"], 
-                   'FirstName' : patient_data["firstname"],
+                   'Name' : patient_data["firstname"] + " " + patient_data["lastname"], 
                    'encdate': date.today(),
                    'MRN' : patient_data["id"],
                    'Age' : patient_data["age"],
-                   'DOB' : patient_data["dob"],
-                   'Physician': patient_data["physician"],
+                   #'DOB' : patient_data["dob"],
+                   # 'Gender' : patient_data["gender"],
+                   # 'Sex' : patient_data["sex"],
+                   #'Physician': patient_data["physician"],
                    'Therapist': patient_data["therapist"],
-                   'SurgeryDate': patient_data["surgery_date"],
-                   'KneeFlexExt_Walk': green_check if KneeFlexExt_Walk < 80 else red_x,
-                   'KneeFlexExt_DJ': green_check if KneeFlexExt_DJ > 80 else red_x,
-                   'KneeFlexExt_HT': green_check if KneeFlexExt_HT > 60 else red_x
+                   #'SurgeryDate': patient_data["surgery_date"],
+                   #DROP VERTICAL JUMP MEASURES
+                   # 'DVJ_Hip_AbADD_left': DVJ_HAB_mean_left,
+                   # 'DVJ_Hip_AbADD_right': DVJ_HAB_mean_right,
+                   # 'DVJ_Hip_AbADD_diff': DVJ_HAB_mean_diff,
+                   # 'DVJ_Knee_VarVal_left': DVJ_KVARVAL_mean_left,
+                   # 'DVJ_Knee_VarVal_right': DVJ_KVARVAL_mean_right,
+                   # 'DVJ_Knee_VarVal_diff': DVJ_KVARVAL_mean_diff,
+                   # 'DVJ_Knee_FlexExt_left': DVJ_KFLEX_mean_left,
+                   # 'DVJ_Knee_FlexExt_right': DVJ_KFLEX_mean_right,
+                   # 'DVJ_Knee_FlexExt_diff': DVJ_KFLEX_mean_diff,                   
+                   # 'DVJ_Hip_FlexExt_left': DVJ_HFLEX_mean_left,
+                   # 'DVJ_Hip_FlexExt_right': DVJ_HFLEX_mean_right,
+                   # 'DVJ_Hip_FlexExt_diff': DVJ_HFLEX_mean_diff,  
+                   # 'DVJ_Trunk_Tilt_left': DVJ_TTILT_mean_left,
+                   # 'DVJ_Trunk_Tilt_right': DVJ_TTILT_mean_right,
+                   # 'DVJ_Trunk_Tilt_diff': DVJ_TTILT_mean_diff, 
+                   
+                   'DVJ_Hip_AbADD_left': green_check if DVJ_HAB_mean_left <= 0 else red_x,
+                   'DVJ_Hip_AbADD_right': green_check if DVJ_HAB_mean_right <= 0 else red_x,
+                   'DVJ_Hip_AbADD_diff': green_check if DVJ_HAB_mean_diff <= 5 and DVJ_HAB_mean_diff >= -5 else red_x,
+                   'DVJ_Knee_VarVal_left': green_check if DVJ_KVARVAL_mean_left >= -2 else red_x,
+                   'DVJ_Knee_VarVal_right': green_check if DVJ_KVARVAL_mean_right >= -2 else red_x,
+                   'DVJ_Knee_VarVal_diff': green_check if DVJ_KVARVAL_mean_diff <= 5 and DVJ_KVARVAL_mean_diff >= -5 else red_x,
+                   'DVJ_Knee_FlexExt_left': green_check if DVJ_KFLEX_mean_left >= 90 else red_x,
+                   'DVJ_Knee_FlexExt_right': green_check if DVJ_KFLEX_mean_right >= 90 else red_x,
+                   'DVJ_Knee_FlexExt_diff': green_check if DVJ_KFLEX_mean_diff <= 5 and DVJ_KFLEX_mean_diff >= -5 else red_x,                   
+                   'DVJ_Hip_FlexExt_left': green_check if DVJ_HFLEX_mean_left >= 90 else red_x,
+                   'DVJ_Hip_FlexExt_right': green_check if DVJ_HFLEX_mean_right >= 90 else red_x,
+                   'DVJ_Hip_FlexExt_diff': green_check if DVJ_HFLEX_mean_diff <= 5 and DVJ_HFLEX_mean_diff >= -5 else red_x, 
+                   'DVJ_Trunk_Tilt_left': green_check if DVJ_TTILT_mean_left >= 30 else red_x,
+                   'DVJ_Trunk_Tilt_right': green_check if DVJ_TTILT_mean_right >= 30 else red_x,
+                   'DVJ_Trunk_Tilt_diff': green_check if DVJ_TTILT_mean_diff <= 5 and DVJ_TTILT_mean_diff >= -5 else red_x, 
+                   
+                   #HEEL TOUCH MEASURES
+                   # 'HET_Hip_AbADD_left': HET_HAB_mean_left,
+                   # 'HET_Hip_AbADD_right': HET_HAB_mean_right,
+                   # 'HET_Hip_AbADD_diff': HET_HAB_mean_diff,
+                   # 'HET_Knee_VarVal_left': HET_KVARVAL_mean_left,
+                   # 'HET_Knee_VarVal_right': HET_KVARVAL_mean_right,
+                   # 'HET_Knee_VarVal_diff': HET_KVARVAL_mean_diff,
+                   # 'HET_Pelvis_Obliq_left': HET_POBLQ_mean_left,
+                   # 'HET_Pelvis_Obliq_right': HET_POBLQ_mean_right,
+                   # 'HET_Pelvis_Obliq_diff': HET_POBLQ_mean_diff,
+                   # 'HET_Trunk_Obliq_left': HET_TOBLQ_mean_left,
+                   # 'HET_Trunk_Obliq_right': HET_TOBLQ_mean_right,
+                   # 'HET_Trunk_Obliq_diff': HET_TOBLQ_mean_diff,
+                   # 'HET_Trunk_Tilt_left': HET_TTILT_mean_left,
+                   # 'HET_Trunk_Tilt_right': HET_TTILT_mean_right,
+                   # 'HET_Trunk_Tilt_diff': HET_TTILT_mean_diff,
+                   
+                   'HET_Hip_AbADD_left': green_check if HET_HAB_mean_left <= 15 else red_x,
+                   'HET_Hip_AbADD_right': green_check if HET_HAB_mean_right <= 15 else red_x,
+                   'HET_Hip_AbADD_diff': green_check if HET_HAB_mean_diff <= 5 and HET_HAB_mean_diff >= -5 else red_x,
+                   'HET_Knee_VarVal_left': green_check if HET_KVARVAL_mean_left >= 0 else red_x,
+                   'HET_Knee_VarVal_right': green_check if HET_KVARVAL_mean_right >= 0 else red_x,
+                   'HET_Knee_VarVal_diff': green_check if HET_KVARVAL_mean_diff <= 5 and HET_KVARVAL_mean_diff >= -5 else red_x,
+                   'HET_Pelvis_Obliq_left': green_check if HET_POBLQ_mean_left <= 5 and HET_POBLQ_mean_left >= -5 else red_x,
+                   'HET_Pelvis_Obliq_right': green_check if HET_POBLQ_mean_right <= 5 and HET_POBLQ_mean_right >= -5 else red_x,
+                   'HET_Pelvis_Obliq_diff': green_check if HET_POBLQ_mean_diff <= 5 and HET_POBLQ_mean_diff >= -5 else red_x,                   
+                   'HET_Trunk_Obliq_left': green_check if HET_TOBLQ_mean_left <= 5 and HET_TOBLQ_mean_left >= -5 else red_x,
+                   'HET_Trunk_Obliq_right': green_check if HET_TOBLQ_mean_right <= 5 and HET_TOBLQ_mean_right >= -5 else red_x,
+                   'HET_Trunk_Obliq_diff': green_check if HET_TOBLQ_mean_diff <= 5 and HET_TOBLQ_mean_diff >= -5 else red_x, 
+                   'HET_Trunk_Tilt_left': green_check if HET_TTILT_mean_left >= 30 else red_x,
+                   'HET_Trunk_Tilt_right': green_check if HET_TTILT_mean_right >= 30 else red_x,
+                   'HET_Trunk_Tilt_diff': green_check if HET_TTILT_mean_diff <= 5 and HET_TTILT_mean_diff >= -5 else red_x 
+
                    }
 
         doc.render(context)
-        doc.save(path + "SportsReport.docx")
-        print('Word Document Created')
-        convert(path + "SportsReport.docx", path + "SportsReport.pdf", keep_active=True)
-        print('Document Converted to PDF')
+        # doc.save(path + "SportsReport.docx")
+        # print('Word Document Created')
+        # convert(path + "SportsReport.docx", path + "SportsReport.pdf", keep_active=True)
+        # print('Document Converted to PDF')
+        
+        # Ask the user where to save the report
+        docx_path = filedialog.asksaveasfilename(
+            title="Save Sports Report As",
+            defaultextension=".docx",
+            filetypes=[("Word Document", "*.docx")],
+            initialfile="SportsReport.docx"
+        )
+        
+        # Only continue if the user didn't cancel
+        if docx_path:
+            pdf_path = os.path.splitext(docx_path)[0] + ".pdf"
+        
+            doc.save(docx_path)
+            print("Word Document Created")
+        
+            convert(docx_path, pdf_path, keep_active=True)
+            print("Document Converted to PDF")
+        else:
+            print("Save cancelled.")
         
        #  # Initialize the merger tool
        #  merger = PdfWriter()
@@ -1859,7 +1985,9 @@ class PatientReportApp(tk.Tk):
             self.patient_data["id"]         = self.entry_id.get()
             self.patient_data["dob"]        = self.entry_dob.get()
             dob                             = self.entry_dob.get()
-            
+        
+        self.patient_data["gender"]         = self.entry_gender.get()
+        self.patient_data["sex"]            = self.entry_sex.get()        
         self.patient_data["physician"]      = self.entry_physician.get()
         self.patient_data["therapist"]      = self.entry_therapist.get()
         self.patient_data["injury_diagnosis"]    = self.entry_diagnosis.get()
