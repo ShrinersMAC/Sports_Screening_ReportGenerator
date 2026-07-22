@@ -27,6 +27,7 @@ import matplotlib
 matplotlib.use("Agg")  # For off-screen rendering
 from matplotlib.figure import Figure
 from matplotlib.patches import Patch
+import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 
@@ -53,26 +54,26 @@ plot_rows = [
 ]
 global cutPoint_ranges
 cutPoint_ranges = pd.DataFrame(
-    [
+    [   # task  variable                            lower   upper   range
         ("DVJ", "TrunkObliquity_MIN_IC_PKF",        np.nan, np.nan, np.nan),
         ("HET", "TrunkObliquity_MIN_IC_PKF",        -10,    10,     20),        # DKV
         ("DVJ", "TrunkObliquity_MAX_IC_PKF",        np.nan, np.nan, np.nan),
         ("HET", "TrunkObliquity_MAX_IC_PKF",        np.nan, np.nan, np.nan),
-        ("DVJ", "TrunkTilt_VAL_PKF",                np.nan, np.nan, np.nan),
-        ("HET", "TrunkTilt_VAL_PKF",                np.nan, np.nan, np.nan),
+        ("DVJ", "TrunkTilt_VAL_PKF",                30,     60,     30),
+        ("HET", "TrunkTilt_VAL_PKF",                30,     60,     30),
         ("DVJ", "PelvicObliquity_VAL_PKF",          np.nan, np.nan, np.nan),
         ("HET", "PelvicObliquity_VAL_PKF",          -5,     5,      10),         # DKV
-        ("DVJ", "HipAbAdduct_VAL_PKF",              np.nan, np.nan, np.nan),
+        ("DVJ", "HipAbAdduct_VAL_PKF",              np.nan, 0,      15),
         ("HET", "HipAbAdduct_VAL_PKF",              np.nan, np.nan, np.nan),
         ("DVJ", "HipAbAdduct_MAX_IC_PKF",           np.nan, 0,      10),        # DKV
         ("HET", "HipAbAdduct_MAX_IC_PKF",           np.nan, 15,     15),        # DKV
-        ("DVJ", "HipFlexExt_MAX_IC_PKF",            np.nan, np.nan, np.nan),
+        ("DVJ", "HipFlexExt_MAX_IC_PKF",            85,     105,    20),
         ("HET", "HipFlexExt_MAX_IC_PKF",            np.nan, np.nan, np.nan),
         ("DVJ", "KneeValgVar_VAL_PKF",              np.nan, np.nan, np.nan),
         ("HET", "KneeValgVar_VAL_PKF",              np.nan, np.nan, np.nan),
         ("DVJ", "KneeValgVar_AVG_IC_PKF",           np.nan, np.nan, np.nan),
         ("HET", "KneeValgVar_AVG_IC_PKF",           np.nan, np.nan, np.nan),
-        ("DVJ", "KneeFlexExt_MAX_IC_PKF",           np.nan, np.nan, np.nan),
+        ("DVJ", "KneeFlexExt_MAX_IC_PKF",           90,     110,    20),
         ("HET", "KneeFlexExt_MAX_IC_PKF",           np.nan, np.nan, np.nan),
         ("DVJ", "HipFlexExtMoment_INT_POS_IC_PKF",  np.nan, np.nan, np.nan),
         ("DVJ", "KneeFlexExtMoment_INT_POS_IC_PKF", np.nan, np.nan, np.nan),
@@ -176,7 +177,7 @@ series_measures = [
 # ============================================================
 class DataHandling:
         
-    def getData_dialog(self):
+    def getData_dialog(self, session_dict):
         """
         Opens a file dialog to select .gcd files and extracts data from them.
         Returns a list of extracted data objects.
@@ -194,6 +195,25 @@ class DataHandling:
         gcd_data = []
         py_data  = []
 
+        # check for data on overlapping dates
+        session_date =  session_dict["session_info"][0][0].strftime("%b%d-%Y")
+        date_exists = set() # set of unique dates
+        
+        for date_path in file_paths:
+            if session_date in date_path:
+                date_exists.add(session_date)
+                
+        if date_exists:
+            answer = messagebox.askyesno(
+                title="Confirm Action",
+                message=f"Data for date: {date_exists} already exists. Do you want to continue and add the current data as a new visit for the same date?"
+            )
+        
+        if answer:
+            print('yay')
+        else: 
+            print('boo')
+        
         for path in file_paths:
             filename = os.path.basename(path)
             if '.py' in path.lower():
@@ -225,6 +245,9 @@ class DataHandling:
             elif '.gcd' in path.lower():
                 try:
                     # get GCD data function
+                    # ---- Pull GCD data here
+                    # check session _dict for data on existing date
+                    
                     data_dict = DataHandling.get_GCDdata(path)
                     # find file creation date
                     # ---- Get file date here
@@ -314,7 +337,7 @@ class DataHandling:
             return data_dict  
     
     # def save_visit(self, df_new, site: str, patient_id: str, session_date: datetime):
-    def save_visit(self, current_df, session_date, patient_id, base_path):
+    def save_visit(self, singleData_df, session_date, patient_id, base_path):
         """
         Saves a new visit for a patient using the naming convention:
         patient_<id>_YYYY_MM_DD_visit<visit_num>.parquet
@@ -347,6 +370,7 @@ class DataHandling:
             next_visit_num = 1
         else:
             # Make sure user wants to add new data if date already exists
+            # ---- CHECK FOR ADD DATA - UPDATE TO NEW LOCATION
             answer = messagebox.askyesno(
                 title="Confirm Action",
                 message="Data for date already exists. Do you want to continue and add the current data as a new visit for the same date?"
@@ -374,7 +398,7 @@ class DataHandling:
                 save_path = os.path.join(base_path, filename)
         
                 # Save the new session
-                current_df.to_parquet(save_path, index=False)
+                singleData_df.to_parquet(save_path, index=False)
             else:
                 # Extract visit numbers from filenames
                 visit_nums = []
@@ -438,6 +462,7 @@ class DataHandling:
                 session_date = datetime(year, month, day)
                 session_info.append((session_date, visit_num))
 
+            # TODO - need to update this in case there are issues here
             except Exception:
                 # If parsing fails, skip metadata extraction
                 pass
@@ -450,7 +475,7 @@ class DataHandling:
 
         return session_dict
     
-    def parse_gcdData(self, gcd_data, patient_id):
+    def parse_gcdData(self, gcd_data, patient_id, session_dict):
         '''
         SUMMARY: GCD data needs to be parsed into a dataframe to be used nicely
         in the plotting functions such that session, side, and injured/uninjured
@@ -472,8 +497,9 @@ class DataHandling:
         # call update data function to grab patient and visit data
         # PatientReportApp.update_data(self)
         
-        # Pull exisitng data if present from parquet files, pull base_path for patient data folder, and get previous sessiond date
-        session_dict = DataHandling.load_create_patient_data(self, site, patient_id)
+        # ---- Original check for existing data
+        # # Pull exisitng data if present from parquet files, pull base_path for patient data folder, and get previous sessiond date
+        # session_dict = DataHandling.load_create_patient_data(self, site, patient_id)
         
         # get session data and info
         base_path = session_dict['base_path']
@@ -511,7 +537,6 @@ class DataHandling:
             df_single = pd.DataFrame([single_vals])
             df_single["task"]   = trial
             df_single["file"]   = trial_fn
-            df_single["trial"]  = tn
             df_single["side"]   = side
             df_single["date"]   = gcd_dict["eval_date"]
             
@@ -525,28 +550,28 @@ class DataHandling:
             all_series.append(df_series)
             tn += 1
             
+        # need to save the new data before concatenating so subsequent visits don't have compounding dataframes of all prior data
+        # save dataframes to parquet files so can be loaded faster later
+        DataHandling.save_visit(self, all_single, gcd_dict["eval_date"], patient_id, base_path)
+        
         # concatenate all trial dataframes to a single dataframe
-        current_df = pd.concat(all_single, axis=0, ignore_index=True)
+        singleData_df = pd.concat(all_single, axis=0, ignore_index=True)
         
         # replace column names if necessary
-        current_df["task"] = current_df["task"].replace({"DJ": "DVJ"})
-        current_df["task"] = current_df["task"].replace({"HT": "HET"})
+        singleData_df["task"] = singleData_df["task"].replace({"DJ": "DVJ"})
+        singleData_df["task"] = singleData_df["task"].replace({"HT": "HET"})
 
         # force 0,1 columns to binary
-        bool_cols = current_df.columns[current_df.isin([0,1]).all()]
-        current_df[bool_cols] = current_df[bool_cols].astype(bool)
+        bool_cols = singleData_df.columns[singleData_df.isin([0,1]).all()]
+        singleData_df[bool_cols] = singleData_df[bool_cols].astype(bool)
         
-        series_df = pd.concat(all_series, axis=0, ignore_index=True)
-        
-        # save dataframes to parquet files so can be loaded faster later
-        # might not need the next_visit_num variable - only really care data is saved to folder
-        DataHandling.save_visit(self, current_df, gcd_dict["eval_date"], patient_id, base_path)
+        seriesData_df = pd.concat(all_series, axis=0, ignore_index=True)
         
         # combine new and exisiting dataframes
-        full_df = pd.concat([existing_df, current_df], axis=0)
+        full_df = pd.concat([existing_df, singleData_df], axis=0)
             
-        # return current_df, series_df
-        return full_df, series_df
+        # return singleData_df, seriesData_df
+        return full_df, seriesData_df
     
     def calc_dfVals(self, df, impaired_limb):
         '''
@@ -562,27 +587,39 @@ class DataHandling:
         Returns: updated dataframe with additional data rows
         '''
         # pull only numeric datatypes and drop the trial column
-        numeric_cols = df.drop(columns="trial").select_dtypes(include="number").columns
+        # numeric_cols = df.drop(columns="trial").select_dtypes(include="number").columns
+        numeric_cols = df.select_dtypes(include="number").columns
         
         # calculate stats over n-visits
-        summary_df = (df.groupby(["task", "side", "date"])[numeric_cols]
+        extractedData_df = (df.groupby(["task", "side", "date"])[numeric_cols]
                         .agg(["min", "max", "mean", "std"])
                         .stack(level=1, future_stack=True)
                         .reset_index()
                         )
         
-        summary_df = summary_df.rename(columns={"level_3": "stat"})
+        extractedData_df = extractedData_df.rename(columns={"level_3": "stat"})
+        
+        # Pull binary and visit/date data for hip/knee strategy indicators
+        binary_cols = ["HipBehindHeel", "AnkleBehindKnee", "KneeBehindShoeFront",
+                       "task", "file", "side", "date"]
+        strategy_df = df[binary_cols].copy()
             
         # add impaired/unimpaired labels
         if impaired_limb == "None": # specifically for screening, when there is no impaired limb
             impaired_limb = "Left"
-        summary_df["status"] = summary_df["side"].eq(impaired_limb).map(
+        
+        # apply impaired/unimparied to dataframes
+        extractedData_df["status"] = extractedData_df["side"].eq(impaired_limb).map(
+            {True: "impaired", False: "unimpaired"}
+        )
+        
+        strategy_df["status"] = strategy_df["side"].eq(impaired_limb).map(
             {True: "impaired", False: "unimpaired"}
         )
         
         # pivot the dataframe to allow calculating the impared-unimparied difference
         diff_df = (
-            summary_df
+            extractedData_df
             .pivot_table(
                 index=["task", "date", "stat"],
                 columns="status",
@@ -629,8 +666,8 @@ class DataHandling:
         # # OLD PIVOT        
         # # calculate impaired/un-impaired difference
         # # pivot left/right to columns first
-        # metrics = summary_df.select_dtypes(include="number").columns
-        # pivoted = summary_df.pivot(index="task", columns=["side", "stat"], values=metrics)
+        # metrics = extractedData_df.select_dtypes(include="number").columns
+        # pivoted = extractedData_df.pivot(index="task", columns=["side", "stat"], values=metrics)
         
         # # subtract
         # impaired_df = pivoted.xs(impaired, axis=1, level="side")
@@ -643,9 +680,7 @@ class DataHandling:
         #     diffs.reset_index().assign(side="diff")
         #     )
         
-        
-        final_df = diff_df
-        return final_df
+        return diff_df, strategy_df
 # ============================================================
 #  Plot Manager
 # ============================================================
@@ -653,7 +688,13 @@ class PlotManager:
     def __init__(self):
         pass
 
-    def plot_screen_DKV(self, summary_df, cutpoints, patient_info, visit_info):
+    def add_image(image_filenamepath, fig, corner_size):
+        img = mpimg.imread(image_filenamepath)
+        img_ax = fig.add_axes(corner_size)   # left, bottom, width, height
+        img_ax.imshow(img)
+        img_ax.axis("off")
+
+    def plot_screen_DKV(self, extractedData_df, strategyData_df, cutpoints, patient_info, visit_info, page_index):
         """
         Creates a 4x3 figure with right limb data on the left and left on the
         right, while symmetry calculations are in the middle column.
@@ -668,7 +709,7 @@ class PlotManager:
         fig.subplots_adjust(hspace=0.4, wspace=0.3)
         
         # Space for header and footer
-        fig.subplots_adjust(top=0.8, bottom=0.10)     
+        fig.subplots_adjust(top=0.83, bottom=0.30)     
         
         # Unpack patient/visit info
         patient_name = patient_info["lastname"] + ", " + patient_info["firstname"]
@@ -678,14 +719,15 @@ class PlotManager:
         patient_id = patient_info["id"]
         # if days_out > 365:
         #     days_out = days_out/365
+        titles = ["Heel Touch", "Drop Vertical Jump"]
         
         # header
         fig.suptitle(
-            "Dynamic Knee Valgus",
+            titles[page_index],
             fontsize=18,
             fontweight="bold",
             x=0.5,
-            y=0.89,
+            y=0.88,
             ha="center"
         )
         # footer
@@ -693,30 +735,38 @@ class PlotManager:
         header_ax.axis("off")
         
         header_ax.text(
-            0.01, 0.97,
+            0.01, 0.95,
             f"Name: {patient_name}      ID: {patient_id}      visit date: {visit_date}\nDays out from injury: {days_out}\nInjury Side: {impaired_limb}",
             ha="left", 
             va="top", 
             fontsize=12
         )
         header_ax.add_patch(
-            plt.Rectangle((0,0),1,1, fill=True, color='lightgray', edgecolor="black", linewidth=1)
+            plt.Rectangle((0,0),1,1, fill=True, facecolor='lightgray', edgecolor="black", linewidth=1)
         )
     
         # -------------------------------
         # 2. Define row/measure mapping
         # -------------------------------
-        plot_rows = [
-            ("TrunkObliquity_MIN_IC_PKF", "HET", "vertical"),
-            ("PelvicObliquity_VAL_PKF", "HET", "vertical"),
-            ("HipAbAdduct_MAX_IC_PKF", "HET", "vertical"),
-            ("HipAbAdduct_MAX_IC_PKF", "DVJ", "vertical"),
+        plot_rows = [[
+            ("TrunkObliquity_MIN_IC_PKF",   "HET", "vertical"), # Lateral trunk lean
+            ("PelvicObliquity_VAL_PKF",     "HET", "vertical"), # Pelvic obluquity
+            ("HipAbAdduct_MAX_IC_PKF",      "HET", "vertical"), # Hip Adduction
+            ("TrunkTilt_VAL_PKF",           "HET", "vertical")],# Forward trunk lean
+            [("TrunkTilt_VAL_PKF",          "DVJ", "vertical"), 
+            ("HipAbAdduct_MAX_IC_PKF",      "DVJ", "vertical"), 
+            ("HipFlexExt_MAX_IC_PKF",       "DVJ", "vertical"), 
+            ("KneeFlexExt_MAX_IC_PKF",      "DVJ", "vertical")] 
         ]
         
-        DKV_ylims = [(-15, 15),
-                     (-10, 10),
-                     (-25, 25),
-                     (-20, 20)
+        DKV_ylims = [[(-15, 15),
+                      (-10, 10),
+                      (-25, 25),
+                      (0,   70)],
+                     [(0,   70),
+                      (-25, 10),
+                      (0,   100),
+                      (0,   110)]
             ]
         
         # -------------------------------
@@ -725,8 +775,8 @@ class PlotManager:
         red_cmap = LinearSegmentedColormap.from_list("redscale", ["#ffcccc", "red"])
         blue_cmap = LinearSegmentedColormap.from_list("bluescale", ["#ccccff", "blue"])
     
-        n_visits = summary_df['date'].nunique()
-        # this will need to be adapted for greater than 2 visits
+        n_visits = extractedData_df['date'].nunique()
+        # TODO - this will need to be adapted for greater than 2 visits
         x_position = [[0], [1]] if n_visits == 1 else [[0, 1], [2, 3]]
         columns = [0, 1, 0, 1]
         rows = [0, 0, 1, 1]
@@ -734,7 +784,7 @@ class PlotManager:
         # -------------------------------
         # 4. Loop through rows
         # -------------------------------
-        for plot_idx, (measure, task, orientation) in enumerate(plot_rows):
+        for plot_idx, (measure, task, orientation) in enumerate(plot_rows[page_index]):
     
             # Extract axes for this row
             ax_screen = axes[rows[plot_idx], columns[plot_idx]]
@@ -743,57 +793,96 @@ class PlotManager:
             # 4A. Establish cut-point ranges for measure
             # -------------------------------
             cutpoint = cutpoints[(cutpoints["metric"] == measure) & (cutpoints["task"] == task)]
-            low = cutpoint["lower"].values
-            high = cutpoint["upper"].values
-            cp_range = high - low
+            # need to convert to float, because int() can't be nan, but float can
+            low         = float(cutpoint["lower"].values[0])
+            high        = float(cutpoint["upper"].values[0])
+            # cp_range    = float(cutpoint["range"].values[0])
             
             # -------------------------------
-            # 4A. Extract data from summary_df
+            # 4A. Extract data from extractedData_df
             # -------------------------------
             if "r" in impaired_limb.lower():
-                R_mean = summary_df[(summary_df["stat"] == "mean") & (summary_df["task"] == task) & (summary_df["status"] == "impaired")][measure].values
-                R_sd = summary_df[(summary_df["stat"] == "std") & (summary_df["task"] == task) & (summary_df["status"] == "impaired")][measure].values
-                R_pts = summary_df[((summary_df["stat"] == "min") | (summary_df["stat"] == "max") | (summary_df["stat"] == "mean")) & (summary_df["task"] == task) & (summary_df["status"] == "impaired")][measure].values
+                R_mean = extractedData_df[(extractedData_df["stat"] == "mean") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "impaired")][measure].values
+                R_sd = extractedData_df[(extractedData_df["stat"] == "std") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "impaired")][measure].values
+                R_pts = extractedData_df[((extractedData_df["stat"] == "min") | (extractedData_df["stat"] == "max") | (extractedData_df["stat"] == "mean")) & (extractedData_df["task"] == task) & (extractedData_df["status"] == "impaired")][measure].values
                 
-                L_mean = summary_df[(summary_df["stat"] == "mean") & (summary_df["task"] == task) & (summary_df["status"] == "unimpaired")][measure].values
-                L_sd = summary_df[(summary_df["stat"] == "std") & (summary_df["task"] == task) & (summary_df["status"] == "unimpaired")][measure].values
-                L_pts = summary_df[((summary_df["stat"] == "min") | (summary_df["stat"] == "max") | (summary_df["stat"] == "mean")) & (summary_df["task"] == task) & (summary_df["status"] == "unimpaired")][measure].values
+                L_mean = extractedData_df[(extractedData_df["stat"] == "mean") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "unimpaired")][measure].values
+                L_sd = extractedData_df[(extractedData_df["stat"] == "std") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "unimpaired")][measure].values
+                L_pts = extractedData_df[((extractedData_df["stat"] == "min") | (extractedData_df["stat"] == "max") | (extractedData_df["stat"] == "mean")) & (extractedData_df["task"] == task) & (extractedData_df["status"] == "unimpaired")][measure].values
 
-                dates = summary_df[(summary_df["stat"] == "mean") & (summary_df["task"] == task) & (summary_df["status"] == "impaired")]["date"].values
+                dates = extractedData_df[(extractedData_df["stat"] == "mean") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "impaired")]["date"].values
             else:
-                L_mean = summary_df[(summary_df["stat"] == "mean") & (summary_df["task"] == task) & (summary_df["status"] == "impaired")][measure].values
-                L_sd = summary_df[(summary_df["stat"] == "std") & (summary_df["task"] == task) & (summary_df["status"] == "impaired")][measure].values
-                L_pts = summary_df[((summary_df["stat"] == "min") | (summary_df["stat"] == "max") | (summary_df["stat"] == "mean")) & (summary_df["task"] == task) & (summary_df["status"] == "impaired")][measure].values
+                L_mean = extractedData_df[(extractedData_df["stat"] == "mean") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "impaired")][measure].values
+                L_sd = extractedData_df[(extractedData_df["stat"] == "std") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "impaired")][measure].values
+                L_pts = extractedData_df[((extractedData_df["stat"] == "min") | (extractedData_df["stat"] == "max") | (extractedData_df["stat"] == "mean")) & (extractedData_df["task"] == task) & (extractedData_df["status"] == "impaired")][measure].values
                 
-                R_mean = summary_df[(summary_df["stat"] == "mean") & (summary_df["task"] == task) & (summary_df["status"] == "unimpaired")][measure].values
-                R_sd = summary_df[(summary_df["stat"] == "std") & (summary_df["task"] == task) & (summary_df["status"] == "unimpaired")][measure].values
-                R_pts = summary_df[((summary_df["stat"] == "min") | (summary_df["stat"] == "max") | (summary_df["stat"] == "mean")) & (summary_df["task"] == task) & (summary_df["status"] == "unimpaired")][measure].values
+                R_mean = extractedData_df[(extractedData_df["stat"] == "mean") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "unimpaired")][measure].values
+                R_sd = extractedData_df[(extractedData_df["stat"] == "std") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "unimpaired")][measure].values
+                R_pts = extractedData_df[((extractedData_df["stat"] == "min") | (extractedData_df["stat"] == "max") | (extractedData_df["stat"] == "mean")) & (extractedData_df["task"] == task) & (extractedData_df["status"] == "unimpaired")][measure].values
 
-                dates = summary_df[(summary_df["stat"] == "mean") & (summary_df["task"] == task) & (summary_df["status"] == "impaired")]["date"].values
+                dates = extractedData_df[(extractedData_df["stat"] == "mean") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "impaired")]["date"].values
                 
             # -------------------------------
             # 4B. Plot shaded cutpoint regions
             # -------------------------------
-            # TODO - need to update gray shaded areas, in plot_bars function
-            # for ax in (ax_R, ax_L):
-            #     ax.axhspan(low, high, color="lightgray", alpha=0.4)
+            def add_shade(ax, cp, orientation):
+                
+                if not cp:
+                    return None
+                
+                y_lower = ax.get_ylim()[0]
+                y_upper = ax.get_ylim()[1]
+                
+                x_lower = ax.get_xlim()[0]
+                x_upper = ax.get_xlim()[1]
+                
+                if orientation == "horizontal":
+                    # vspan, give both values as x-coordinates
+                    if cp[0] == np.nan and cp[1] != np.nan:
+                        # shade above only
+                        ax.axvspan(cp[1], x_upper, color="lightgray", alpha=0.4)
+                    elif cp[0] != np.nan and cp[1] == np.nan:
+                        # shade below only
+                        ax.axvspan(x_lower, cp[0], color="lightgray", alpha=0.4)
+                    else:
+                        # shade above and below
+                        ax.axvspan(cp[1], x_upper, color="lightgray", alpha=0.4)
+                        ax.axvspan(x_lower, cp[0], color="lightgray", alpha=0.4)
+                else:
+                    # hspan, give both values as y-coordinates
+                    if cp[0] == np.nan and cp[1] != np.nan:
+                        ax.axhspan(cp[1], y_upper, color="lightgray", alpha=0.4)
+                    elif cp[0] != np.nan and cp[1] == np.nan:
+                        ax.axhspan(y_lower, cp[0], color="lightgray", alpha=0.4)
+                    else:
+                        ax.axhspan(cp[1], y_upper, color="lightgray", alpha=0.4)
+                        ax.axhspan(y_lower, cp[0], color="lightgray", alpha=0.4)
     
             # -------------------------------
             # 4C. Plot bars (horizontal or vertical)
             # -------------------------------
-            # x = 2
-    
-            def plot_bars(ax, x, mean, sd, colormap, cp, n_visits, plot_type, colnum):
+            def map_colors(colormap, n_visits):
                 color = []
                 for i in range(n_visits):
                     # use float indexing i.e. colomap(1.0) 
                     # Floats sample a colormap at a normalized position (0–1), while ints trigger discrete lookup‑table indexing, producing different colors.
                     color.append(colormap(i / (n_visits - 1)) if n_visits > 1 else colormap(1.0))
+                    
+                return color
+    
+            def plot_bars(ax, x, mean, sd, colormap, cp, n_visits, plot_type, colnum):
                 
+                color = map_colors(colormap, n_visits)
+                
+                # gray shaded areas based on cutpoints and axis limits
+                ax.set_ylim(DKV_ylims[page_index][plot_idx][0], DKV_ylims[page_index][plot_idx][1])
+                add_shade(ax, cp, "vertical")
+                
+                # bars
                 bar = ax.bar(x, mean, yerr=sd,
                        color=color, alpha=0.7)
-                ax.set_ylim(DKV_ylims[plot_idx][0], DKV_ylims[plot_idx][1])
-                ax.set_title(f"{task}\n{measure.split('_')[0]}")
+                
+                ax.set_title(f"{measure.split('_')[0]}")
                 if colnum == 0:
                     ax.set_ylabel("Angle (degrees)")
                 
@@ -801,8 +890,8 @@ class PlotManager:
                 ax.axhline(0, color="black", linewidth=2.5)
                 
                 # trun off axis labels where bars lie
-                # ax.set_xticks([])
-                # ax.set_xticklabels([])
+                ax.set_xticks([])
+                ax.set_xticklabels([])
                 
                 # cut points
                 if cp:
@@ -851,58 +940,103 @@ class PlotManager:
                 )
                 
             # footer
-            footer_ax = fig.add_axes([0.05, 0.02, 0.92, 0.055])  # [left, bottom, width, height]
+            footer_ax = fig.add_axes([0.05, 0.001, 0.92, 0.07])  # [left, bottom, width, height]
             footer_ax.axis("off")
             
             footer_ax.add_patch(
-                plt.Rectangle((0,0),1,1, fill=False, edgecolor="black", linewidth=1)
+                plt.Rectangle((0,0),1,1, fill=True, facecolor="lightgray", edgecolor="black", linewidth=1)
             )
             
             footer_ax.legend(
                 handles=legend_items,
-                loc="right",
+                loc="lower left",
                 ncol=n_visits,   # or adjust as needed
                 fontsize=10,
                 frameon=False
             )
             
-            footer_ax.text(
-                0.775, 0.78,
-                "Right\nLeft",
-                ha="left", va="top", fontsize=11
-            )
-            
-            # TODO - how to deal with date issues
-            # footer_ax.text(
-            #     0.8, 0.96,
-            #     f"{dates[0]}   {dates[1]}",
-            #     ha="left", va="top", fontsize=9
-            # )
-    
-            # -------------------------------
-            # 4E. Titles/Labels
-            # -------------------------------
-            # ax_screen.set_ylabel(f"{measure.split('_')[0].title()}")
-            # ax_L.set_ylabel(f"{measure.split('_')[0].title()}")
-            # if row_idx == 0:
-            #     # ax_R.set_title(f"{measure.split('_')[0].title()} – Right")
-            #     # ax_SYM.set_title("Symmetry")
-            #     # ax_L.set_title(f"{measure.split('_')[0].title()} – Left")
-            #     ax_R.set_title("Right", fontsize=12, fontweight="bold")
-            #     ax_SYM.set_title("Symmetry", fontsize=12, fontweight="bold")
-            #     ax_L.set_title("Left", fontsize=12, fontweight="bold")
-    
+        # -------------------------------
+        # 4E. Checks and X's
+        # -------------------------------
+        # ---- Checks and X's        
+        # pull strategy data
+        strategies      = ["HipBehindHeel", "KneeBehindShoeFront", "KneeBehindShoeFront", "HipBehindHeel"]
+        sides           = ["Left", "Left", "Right", "Right"]
+        spacing_x       = [0.02, 0.26, 0.46, 0.72]
+        spacing_rep     = [0, 0.03, 0.06]
+        spacingbox_date = 0.05
+        spacing_date    = 0.085
+        
+        for sidx, strategy in enumerate(strategies):
+            task_strategies = strategyData_df[(strategyData_df["task"] == task) & (strategyData_df["side"] == sides[sidx])][["date", strategy]]
+        
+            for didx, date in enumerate(task_strategies["date"].unique()):
+                task_strategy = task_strategies[task_strategies["date"] == date][strategy].values
+                for ridx, result in enumerate(task_strategy):
+                    # Hip behind heel
+                    if result:
+                        image_filenamepath = r"\\spr-fs-app01\collab\Mal_Share\ViconDatabase\Python Code\Sports_Screening_ReportGenerator\img_green_check.png"
+                    else:
+                        image_filenamepath = r"\\spr-fs-app01\collab\Mal_Share\ViconDatabase\Python Code\Sports_Screening_ReportGenerator\img_red_x.png"
+                    
+                    # add pic corners and dimensions
+                    cs = [0.1 + spacing_x[sidx] + spacing_rep[ridx], 0.12 + didx*spacingbox_date, 0.03, 0.03] # left, bottom, width, height - normalized from 0 to 1
+                    PlotManager.add_image(image_filenamepath, fig, cs)
+                    
+                    # add boxes to indicate side and session
+                    if ridx == 0:
+                        # color coded boxes
+                        seshbox_ax = fig.add_axes([0.095 + spacing_x[sidx], 0.115 + didx*spacingbox_date, 0.10, 0.04])  # [left, bottom, width, height]
+                        seshbox_ax.axis("off")
+                        
+                        color = map_colors(blue_cmap, n_visits) if sidx < 2 else map_colors(red_cmap, n_visits)
+                        seshbox_ax.add_patch(
+                            plt.Rectangle((0,0),1,1, fill=False, edgecolor=color[didx], linewidth=3)
+                        )
+                        
+                        # add date
+                        months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+                        dy = date.split("-")[0]
+                        mo = months[int(date.split("-")[1])]
+                        yr = date.split("-")[2]
+                        
+                        footer_ax.text(
+                            0.035 + didx*spacing_date, 0.95, f"{dy}, {mo}\n{yr}", ha="center", va="top", fontsize=8 #, weight="bold"
+                        )
+                        if didx == len(task_strategies["date"].unique())-1:
+                            footer_ax.text(
+                            0.07 + didx*spacing_date, 0.175, "Right\nLeft", ha="left", va="bottom", fontsize=12
+                            )
+        
+        # add stick figures
+        image_filenamepath = r"\\spr-fs-app01\collab\Mal_Share\ViconDatabase\Python Code\Sports_Screening_ReportGenerator\img_left_strategy.png"
+        PlotManager.add_image(image_filenamepath, fig, [0.21, 0.075, 0.155, 0.21])
+        
+        image_filenamepath = r"\\spr-fs-app01\collab\Mal_Share\ViconDatabase\Python Code\Sports_Screening_ReportGenerator\img_right_strategy.png"
+        PlotManager.add_image(image_filenamepath, fig, [0.65, 0.075, 0.155, 0.21]) # first x-position should be 1 minus left x-poisition minus width
+        
+        # add text
+        footer_ax.text(
+            0.12, 1.05, "HIP BEHIND\nHEELS", ha="center", va="bottom", fontsize=13, weight="bold"
+        )
+        footer_ax.text(
+            0.5, 1.05, "KNEES BEHIND\nTOES", ha="center", va="bottom", fontsize=13, weight="bold"
+        )
+        footer_ax.text(
+            1 - 0.12, 1.05, "HIPS BEHIND\nHEELS", ha="center", va="bottom", fontsize=13, weight="bold"
+        )
+        
         return fig
     
-    def plot_anatomical_DKV(self, summary_df, cutpoints, patient_info, visit_info):
+    def plot_anatomical_DKV(self, extractedData_df, cutpoints, patient_info, visit_info):
         """
         Creates a 4x3 figure with right limb data on the left and left on the
         right, while symmetry calculations are in the middle column.
         
         A combination of vertical and horizontal bars 
         """
-        
         # -------------------------------
+        
         # 1. Setup figure
         # -------------------------------
         # ---- Choose symmetry
@@ -946,7 +1080,7 @@ class PlotManager:
             fontsize=12
         )
         header_ax.add_patch(
-            plt.Rectangle((0,0),1,1, fill=True, color='lightgray', edgecolor="black", linewidth=1)
+            plt.Rectangle((0,0),1,1, fill=True, facecolor='lightgray', edgecolor="black", linewidth=1)
         )
     
         # -------------------------------
@@ -972,7 +1106,7 @@ class PlotManager:
         blue_cmap = LinearSegmentedColormap.from_list("bluescale", ["#ccccff", "blue"])
         black_cmap = LinearSegmentedColormap.from_list("blackgrayscale", ["#cccccc", "black"])
     
-        n_visits = summary_df['date'].nunique()
+        n_visits = extractedData_df['date'].nunique()
     
         # -------------------------------
         # 4. Loop through rows
@@ -997,34 +1131,34 @@ class PlotManager:
             cp_range    = float(cutpoint["range"].values[0])
             
             # -------------------------------
-            # 4A. Extract data from summary_df
+            # 4A. Extract data from extractedData_df
             # -------------------------------
             if "r" in impaired_limb.lower():
-                R_mean = summary_df[(summary_df["stat"] == "mean") & (summary_df["task"] == task) & (summary_df["status"] == "impaired")][measure].values
-                R_sd = summary_df[(summary_df["stat"] == "std") & (summary_df["task"] == task) & (summary_df["status"] == "impaired")][measure].values
-                R_pts = summary_df[((summary_df["stat"] == "min") | (summary_df["stat"] == "max") | (summary_df["stat"] == "mean")) & (summary_df["task"] == task) & (summary_df["status"] == "impaired")][measure].values
+                R_mean = extractedData_df[(extractedData_df["stat"] == "mean") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "impaired")][measure].values
+                R_sd = extractedData_df[(extractedData_df["stat"] == "std") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "impaired")][measure].values
+                R_pts = extractedData_df[((extractedData_df["stat"] == "min") | (extractedData_df["stat"] == "max") | (extractedData_df["stat"] == "mean")) & (extractedData_df["task"] == task) & (extractedData_df["status"] == "impaired")][measure].values
                 
-                L_mean = summary_df[(summary_df["stat"] == "mean") & (summary_df["task"] == task) & (summary_df["status"] == "unimpaired")][measure].values
-                L_sd = summary_df[(summary_df["stat"] == "std") & (summary_df["task"] == task) & (summary_df["status"] == "unimpaired")][measure].values
-                L_pts = summary_df[((summary_df["stat"] == "min") | (summary_df["stat"] == "max") | (summary_df["stat"] == "mean")) & (summary_df["task"] == task) & (summary_df["status"] == "unimpaired")][measure].values
+                L_mean = extractedData_df[(extractedData_df["stat"] == "mean") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "unimpaired")][measure].values
+                L_sd = extractedData_df[(extractedData_df["stat"] == "std") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "unimpaired")][measure].values
+                L_pts = extractedData_df[((extractedData_df["stat"] == "min") | (extractedData_df["stat"] == "max") | (extractedData_df["stat"] == "mean")) & (extractedData_df["task"] == task) & (extractedData_df["status"] == "unimpaired")][measure].values
 
-                SYM_mean = 100 * summary_df[(summary_df["stat"] == "mean") & (summary_df["task"] == task) & (summary_df["status"] == "diff")][measure].values / cp_range
-                # SYM_sd = summary_df[(summary_df["stat"] == "std") & (summary_df["task"] == task) & (summary_df["status"] == "diff")][measure].values / cp_range
-                # SYM_pts = summary_df[((summary_df["stat"] == "min") | (summary_df["stat"] == "max") | (summary_df["stat"] == "mean")) & (summary_df["task"] == task) & (summary_df["status"] == "diff")][measure].values / cp_range
-                dates = summary_df[(summary_df["stat"] == "mean") & (summary_df["task"] == task) & (summary_df["status"] == "impaired")]["date"].values
+                SYM_mean = 100 * extractedData_df[(extractedData_df["stat"] == "mean") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "diff")][measure].values / cp_range
+                # SYM_sd = extractedData_df[(extractedData_df["stat"] == "std") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "diff")][measure].values / cp_range
+                # SYM_pts = extractedData_df[((extractedData_df["stat"] == "min") | (extractedData_df["stat"] == "max") | (extractedData_df["stat"] == "mean")) & (extractedData_df["task"] == task) & (extractedData_df["status"] == "diff")][measure].values / cp_range
+                dates = extractedData_df[(extractedData_df["stat"] == "mean") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "impaired")]["date"].values
             else:
-                L_mean = summary_df[(summary_df["stat"] == "mean") & (summary_df["task"] == task) & (summary_df["status"] == "impaired")][measure].values
-                L_sd = summary_df[(summary_df["stat"] == "std") & (summary_df["task"] == task) & (summary_df["status"] == "impaired")][measure].values
-                L_pts = summary_df[((summary_df["stat"] == "min") | (summary_df["stat"] == "max") | (summary_df["stat"] == "mean")) & (summary_df["task"] == task) & (summary_df["status"] == "impaired")][measure].values
+                L_mean = extractedData_df[(extractedData_df["stat"] == "mean") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "impaired")][measure].values
+                L_sd = extractedData_df[(extractedData_df["stat"] == "std") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "impaired")][measure].values
+                L_pts = extractedData_df[((extractedData_df["stat"] == "min") | (extractedData_df["stat"] == "max") | (extractedData_df["stat"] == "mean")) & (extractedData_df["task"] == task) & (extractedData_df["status"] == "impaired")][measure].values
                 
-                R_mean = summary_df[(summary_df["stat"] == "mean") & (summary_df["task"] == task) & (summary_df["status"] == "unimpaired")][measure].values
-                R_sd = summary_df[(summary_df["stat"] == "std") & (summary_df["task"] == task) & (summary_df["status"] == "unimpaired")][measure].values
-                R_pts = summary_df[((summary_df["stat"] == "min") | (summary_df["stat"] == "max") | (summary_df["stat"] == "mean")) & (summary_df["task"] == task) & (summary_df["status"] == "unimpaired")][measure].values
+                R_mean = extractedData_df[(extractedData_df["stat"] == "mean") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "unimpaired")][measure].values
+                R_sd = extractedData_df[(extractedData_df["stat"] == "std") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "unimpaired")][measure].values
+                R_pts = extractedData_df[((extractedData_df["stat"] == "min") | (extractedData_df["stat"] == "max") | (extractedData_df["stat"] == "mean")) & (extractedData_df["task"] == task) & (extractedData_df["status"] == "unimpaired")][measure].values
 
-                SYM_mean = 100 * summary_df[(summary_df["stat"] == "mean") & (summary_df["task"] == task) & (summary_df["status"] == "diff")][measure].values / cp_range
-                # SYM_sd = summary_df[(summary_df["stat"] == "std") & (summary_df["task"] == task) & (summary_df["status"] == "diff")][measure].values / cp_range
-                # SYM_pts = summary_df[((summary_df["stat"] == "min") | (summary_df["stat"] == "max") | (summary_df["stat"] == "mean")) & (summary_df["task"] == task) & (summary_df["status"] == "diff")][measure].values / cp_range
-                dates = summary_df[(summary_df["stat"] == "mean") & (summary_df["task"] == task) & (summary_df["status"] == "impaired")]["date"].values
+                SYM_mean = 100 * extractedData_df[(extractedData_df["stat"] == "mean") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "diff")][measure].values / cp_range
+                # SYM_sd = extractedData_df[(extractedData_df["stat"] == "std") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "diff")][measure].values / cp_range
+                # SYM_pts = extractedData_df[((extractedData_df["stat"] == "min") | (extractedData_df["stat"] == "max") | (extractedData_df["stat"] == "mean")) & (extractedData_df["task"] == task) & (extractedData_df["status"] == "diff")][measure].values / cp_range
+                dates = extractedData_df[(extractedData_df["stat"] == "mean") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "impaired")]["date"].values
                 
             # -------------------------------
             # 4B. Plot shaded cutpoint regions
@@ -1179,7 +1313,7 @@ class PlotManager:
             footer_ax.axis("off")
             
             footer_ax.add_patch(
-                plt.Rectangle((0,0),1,1, fill=False, edgecolor="black", linewidth=1)
+                plt.Rectangle((0,0),1,1, fill=True, facecolor="lightgray", edgecolor="black", linewidth=1)
             )
             
             footer_ax.legend(
@@ -1391,14 +1525,14 @@ class ReportGenerator:
         self.styles         = getSampleStyleSheet()
         
     # ---- For Spencer
-    def generate_summary_page(self, summary_df, patient_data):
+    def generate_summary_page(self, extractedData_df, patient_data):
         # parent_folder = os.path.dirname(os.path.dirname(__file__))
         # os.chdir(parent_folder)
         # path = r"C:\Users\SWarshauer\OneDrive - Shriners Children's\Documents\GitHub\Sports_Screening_ReportGenerator/"
         path = r"\\spr-fs-app01.shriners.cc\collab\Mal_Share\ViconDatabase\Python Code\Sports_Screening_ReportGenerator/"
         
         # pull cutpoints and grab data that is needed
-        DVJ_HAB_mean = summary_df[(summary_df["task"] == "DVJ") & (summary_df["status"] == "diff") & (summary_df["stat"] == "mean")]["HipAbAdduct_MAX_IC_PKF"]
+        DVJ_HAB_mean = extractedData_df[(extractedData_df["task"] == "DVJ") & (extractedData_df["status"] == "diff") & (extractedData_df["stat"] == "mean")]["HipAbAdduct_MAX_IC_PKF"]
         
         KneeFlexExt_Walk   = 90
         KneeFlexExt_DJ     = 85
@@ -1563,7 +1697,7 @@ class PatientReportApp(tk.Tk):
         '''
         # ---- Spencer - generate summary page
         if function_to_call == 'generate_summary':
-            self.report_generator.generate_summary_page(self.loaded_summary_df, self.patient_data)
+            self.report_generator.generate_summary_page(self.loaded_extractedData_df, self.patient_data)
     
     def add_placeholder(self, entry, placeholder, color="gray"):
         entry.insert(0, placeholder)
@@ -1591,12 +1725,12 @@ class PatientReportApp(tk.Tk):
         # --- Reset stored data ---
         self.patient_data = Default_patient_info
     
-        self.loaded_gcd_data        = None
-        self.loaded_python_data     = None
-        self.loaded_current_df       = None
-        self.loaded_series_df       = None
-        self.loaded_summary_df      = None
-        self.current_preview_page   = 1
+        self.loaded_gcd_data            = None
+        self.loaded_python_data         = None
+        self.loaded_singleData_df       = None
+        self.loaded_seriesData_df       = None
+        self.loaded_extractedData_df    = None
+        self.current_preview_page       = 1
     
         # --- Clear all entry widgets ---
         for entry in [
@@ -1639,10 +1773,25 @@ class PatientReportApp(tk.Tk):
 
 
     def load_data(self):
-        # need to use a data handler function to get data from the other class in a clean way
-        # ---- call function across classes
+        '''
+        SUMMARY. Loads gcd and py_file data (if it exists)
+        The first step is to check for existing data based on the patient ID 
+        number - load_create_patient_data checks for both a patient folder and 
+        parquet files for a given date
+
+        Returns
+        -------
+        None
+        '''
+        # update UI data
+        self.update_data()
+        
+        # ---- Should be checking for existing data here
+        # Pull exisitng data if present from parquet files, pull base_path for patient data folder, and get previous sessiond date
+        session_dict = DataHandling.load_create_patient_data(self, site, self.entry_id.get())
+        
         # TODO Need to fix error handling when no data is selected
-        gcd_data, py_data = self.data_handler.getData_dialog()
+        gcd_data, py_data = self.data_handler.getData_dialog(session_dict)
         
         if py_data:
             # keep loaded patient data accessible across classes
@@ -1652,34 +1801,27 @@ class PatientReportApp(tk.Tk):
             
         if gcd_data:
             # assign to self to use across the app
-            current_df, series_df    = self.data_handler.parse_gcdData(gcd_data, self.entry_id.get())
+            # ---- Pull and parse data - save to parquet
+            singleData_df, seriesData_df    = self.data_handler.parse_gcdData(gcd_data, self.entry_id.get(), session_dict)
             
             # keep data accessible across classes
-            self.loaded_gcd_data    = gcd_data
-            self.loaded_current_df  = current_df
-            self.loaded_series_df   = series_df
+            self.loaded_gcd_data        = gcd_data
+            self.loaded_singleData_df   = singleData_df
+            self.loaded_seriesData_df   = seriesData_df
             
             # Update data from UI - includes self.loaded_gcd_data
-            self.update_data()
+            # I think this should be done up above...
+            # self.update_data()
             
             # now take dataframes and calculate needed metrics
             # impaired = self.patient_data["injury_side"]
-            summary_df = self.data_handler.calc_dfVals(current_df, self.patient_data["injury_side"])
+            # ---- Calculate 
+            extractedData_df, strategy_df = self.data_handler.calc_dfVals(singleData_df, self.patient_data["injury_side"])
             # ---- !! NEW FOR SPENCER !!
-            self.loaded_summary_df = summary_df
+            self.loaded_extractedData_df = extractedData_df
+            self.loaded_strategyData_df = strategy_df
             
-            # messagebox.showinfo(
-            #     "Data Loaded",
-            #     f"Successfully loaded {len(gcd_data)} GCD file(s).\nSuccessfully loaded single, series, and summary data."
-            # )
             
-        
-            
-            # messagebox.showinfo(
-            #     "Data Loaded",
-            #     "Successfully loaded patient info from .py file."
-            # )
-    
     # --------------------------------------------------------
     #  UI
     # --------------------------------------------------------
@@ -1892,9 +2034,9 @@ class PatientReportApp(tk.Tk):
         
         num_pydata = len(self.loaded_py_data)
         if num_pydata > 0:
-            self.pystatus_label.config(text=f"✓ {num_pydata} patient files loaded", foreground="green")
+            self.pystatus_label.config(text=f"✓ Patient info loaded from {num_pydata} file(s)", foreground="green")
         else:
-            self.pystatus_label.config(text="⚠ Patient info not used")
+            self.pystatus_label.config(text="⚠ Patient info added manually")
             
         # self.status_label.after(1500, lambda: self.status_label.config(text=""))
 
@@ -2038,12 +2180,16 @@ class PatientReportApp(tk.Tk):
     
         # PAGE 2 — DKV plots
         # ---- Screen v. anatomical
-        self.preview_figures[2] = self.plot_manager.plot_anatomical_DKV(self.loaded_summary_df, cutPoint_ranges, self.patient_data, visit_info)
-        # self.preview_figures[2] = self.plot_manager.plot_screen_DKV(self.loaded_summary_df, cutPoint_ranges, self.patient_data, visit_info)
+        # self.preview_figures[2] = self.plot_manager.plot_anatomical_DKV(self.loaded_extractedData_df, cutPoint_ranges, self.patient_data, visit_info)
+        # self.preview_figures[2] = self.plot_manager.plot_screen_DKV(self.loaded_extractedData_df, cutPoint_ranges, self.patient_data, visit_info)
+        self.preview_figures[2] = self.plot_manager.plot_screen_DKV(self.loaded_extractedData_df, self.loaded_strategyData_df, cutPoint_ranges, self.patient_data, visit_info, 0)
+
         # self.preview_figures[2] = self.plot_manager.dkv_errbar_figure(self.visits)
     
         # PAGE 3 — Hip vs Knee plots
-        self.preview_figures[3] = self.plot_manager.hks_errbar_figure(self.visits)
+        # self.preview_figures[3] = self.plot_manager.hks_errbar_figure(self.visits)
+        self.preview_figures[3] = self.plot_manager.plot_screen_DKV(self.loaded_extractedData_df, self.loaded_strategyData_df, cutPoint_ranges, self.patient_data, visit_info, 1)
+
 
     def open_plot_window(self):
         # If already open, bring to front
