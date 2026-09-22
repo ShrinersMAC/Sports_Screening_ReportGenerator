@@ -30,6 +30,7 @@ from matplotlib.patches import Patch
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.backends.backend_pdf import PdfPages
 
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, PageBreak
@@ -52,6 +53,7 @@ plot_rows = [
     ("HipAbAdduct_MAX_IC_PKF", "HET", "horizontal"),
     ("HipAbAdduct_MAX_IC_PKF", "DVJ", "horizontal"),
 ]
+
 global cutPoint_ranges
 cutPoint_ranges = pd.DataFrame(
     [   # task  variable                            lower   upper   range
@@ -89,7 +91,7 @@ Default_patient_info = {
     "id":               "123456",
     "physician":        "Dr. Smith",
     "injury_diagnosis": "ACL tear",
-    "injury_side":      "Right",
+    "injury_side":      "None",
     "age":              12,
     "dob":              "2012-01-01",
     "gender":           "female",
@@ -192,16 +194,19 @@ class DataHandling:
             messagebox.showinfo("No Files Selected", "No .gcd files were chosen.")
             return None
 
-        gcd_data = []
-        py_data  = []
+        gcd_data    = []
+        py_data     = []
+        date_exists = None
+        answer = False
 
         # check for data on overlapping dates
-        session_date =  session_dict["session_info"][0][0].strftime("%b%d-%Y")
-        date_exists = set() # set of unique dates
+        if "session_info" in session_dict.keys():
+            session_date =  session_dict["session_info"]["session_date"]
+            date_exists = set() # set of unique dates
         
-        for date_path in file_paths:
-            if session_date in date_path:
-                date_exists.add(session_date)
+            for date_path in file_paths:
+                if session_date in date_path:
+                    date_exists.add(session_date)
                 
         if date_exists:
             answer = messagebox.askyesno(
@@ -209,10 +214,39 @@ class DataHandling:
                 message=f"Data for date: {date_exists} already exists. Do you want to continue and add the current data as a new visit for the same date?"
             )
         
-        if answer:
-            print('yay')
+        if answer or not date_exists:
+            # pull gcd data then create new parquet file later
+            for path in file_paths:
+                filename = os.path.basename(path)
+                if '.gcd' in path.lower():
+                    try:
+                        # get GCD data function
+                        # ---- Pull GCD data here
+                        # check session _dict for data on existing date
+                        
+                        data_dict = DataHandling.get_GCDdata(path)
+                        # find file creation date
+                        # ---- Get file date here
+                        # TODO - need to change to some other way to get eval_date - perhaps st_ctime
+                        eval_date = datetime.fromtimestamp(os.stat(path).st_mtime).strftime("%d-%m-%Y")
+                        
+                        gcd_data.append({
+                            "file_name": filename,
+                            "eval_date": eval_date,
+                            "data_dict": data_dict
+                        })
+                        
+                    except Exception as e:
+                        messagebox.showerror(
+                            "Error Reading File",
+                            f"Could not extract data from:\n{path}\n\nError:\n{e}"
+                        )
+
+            print(f'creating new visit for date: {eval_date}')
+            
         else: 
-            print('boo')
+            # don't add data as it already exists, just load existing data and don't use gcd files
+            print(f'Exisiting data for date {date_exists} will be loaded')
         
         for path in file_paths:
             filename = os.path.basename(path)
@@ -240,30 +274,6 @@ class DataHandling:
                     messagebox.showerror(
                         "Error Reading File",
                         f"Could not read Python file:\n{path}\n\nError:\n{e}"
-                    )
-                
-            elif '.gcd' in path.lower():
-                try:
-                    # get GCD data function
-                    # ---- Pull GCD data here
-                    # check session _dict for data on existing date
-                    
-                    data_dict = DataHandling.get_GCDdata(path)
-                    # find file creation date
-                    # ---- Get file date here
-                    # TODO - need to change to some other way to get eval_date - perhaps st_ctime
-                    eval_date = datetime.fromtimestamp(os.stat(path).st_mtime).strftime("%d-%m-%Y")
-                    
-                    gcd_data.append({
-                        "file_name": filename,
-                        "eval_date": eval_date,
-                        "data_dict": data_dict
-                    })
-                    
-                except Exception as e:
-                    messagebox.showerror(
-                        "Error Reading File",
-                        f"Could not extract data from:\n{path}\n\nError:\n{e}"
                     )
 
         return gcd_data, py_data
@@ -336,8 +346,8 @@ class DataHandling:
                 data_dict.update({key: values})
             return data_dict  
     
-    # def save_visit(self, df_new, site: str, patient_id: str, session_date: datetime):
-    def save_visit(self, singleData_df, session_date, patient_id, base_path):
+    # def save_new_parquet(self, df_new, site: str, patient_id: str, session_date: datetime):
+    def save_new_parquet(self, singleData_df, session_date, patient_id, base_path, df_type):
         """
         Saves a new visit for a patient using the naming convention:
         patient_<id>_YYYY_MM_DD_visit<visit_num>.parquet
@@ -356,62 +366,132 @@ class DataHandling:
         # Format date components
         y = int(session_date.split("-")[-1])
         m = int(session_date.split("-")[1])
+        # ---- Running into date issue here
         d = int(session_date.split("-")[0])
 
         # Find existing files for this patient on this date
         pattern = os.path.join(
             base_path,
-            f"patient_{patient_id}_{y:04d}_{m:02d}_{d:02d}_visit*.parquet"
+            f"patient_{patient_id}_{y:04d}_{m:02d}_{d:02d}_{df_type}_visit*.parquet"
         )
         existing_files = glob.glob(pattern)
 
         # Determine next visit number
         if not existing_files:
             next_visit_num = 1
-        else:
-            # Make sure user wants to add new data if date already exists
-            # ---- CHECK FOR ADD DATA - UPDATE TO NEW LOCATION
-            answer = messagebox.askyesno(
-                title="Confirm Action",
-                message="Data for date already exists. Do you want to continue and add the current data as a new visit for the same date?"
-            )
+            print(f"New {df_type} data being added for date: {session_date}, as visit{next_visit_num}")
+            # msg = f"New data being added for date: {session_date}, as visit{next_visit_num}"
+            # messagebox.showinfo("Confirm Selection", msg)
             
-            if answer:
-                
-                # Extract visit numbers from filenames
-                visit_nums = []
-                for f in existing_files:
-                    fname = os.path.basename(f)
-                    # Format: patient_<id>_YYYY_MM_DD_visitX.parquet
-                    visit_str = fname.split("_")[-1]  # "visitX.parquet"
-                    visit_num = int(visit_str.replace("visit", "").replace(".parquet", ""))
-                    visit_nums.append(visit_num)
+            # Build final filename
+            filename = (
+                f"patient_{patient_id}_{y:04d}_{m:02d}_{d:02d}_{df_type}_visit{next_visit_num}.parquet"
+            )
+            save_path = os.path.join(base_path, filename)
     
-                next_visit_num = max(visit_nums) + 1
-                msg = f"New data being added for date: {session_date}, as visit{next_visit_num}"
-                messagebox.showinfo("Confirm Selection", msg)
+            # Save the new session
+            singleData_df.to_parquet(save_path, index=False)
+        else:
+            # loop through existing files and grab last visit number
                 
-                # Build final filename
-                filename = (
-                    f"patient_{patient_id}_{y:04d}_{m:02d}_{d:02d}_visit{next_visit_num}.parquet"
-                )
-                save_path = os.path.join(base_path, filename)
+            # Extract visit numbers from filenames
+            visit_nums = []
+            for f in existing_files:
+                fname = os.path.basename(f)
+                # Format: patient_<id>_YYYY_MM_DD_dftype_visitX.parquet
+                visit_str = fname.split("_")[-1]  # "visitX.parquet"
+                visit_num = int(visit_str.replace("visit", "").replace(".parquet", ""))
+                visit_nums.append(visit_num)
+
+            next_visit_num = max(visit_nums) + 1
+            print(f"ADDITOINAL VISIT {df_type} data being added for date: {session_date}, as visit{next_visit_num}")
+            # msg = f"ADDITOINAL VISIT being added for date: {session_date}, as visit{next_visit_num}"
+            # messagebox.showinfo("Confirm Selection", msg)
+            
+            # Build final filename
+            filename = (
+                f"patient_{patient_id}_{y:04d}_{m:02d}_{d:02d}_{df_type}_visit{next_visit_num}.parquet"
+            )
+            save_path = os.path.join(base_path, filename)
+    
+            # Save the new session
+            singleData_df.to_parquet(save_path, index=False)
+        # else:
+        #     # Extract visit numbers from filenames
+        #     visit_nums = []
+        #     for f in existing_files:
+        #         fname = os.path.basename(f)
+        #         # Format: patient_<id>_YYYY_MM_DD_visitX.parquet
+        #         visit_str = fname.split("_")[-1]  # "visitX.parquet"
+        #         visit_num = int(visit_str.replace("visit", "").replace(".parquet", ""))
+        #         visit_nums.append(visit_num)
+
+        #     next_visit_num = max(visit_nums)
+        #     msg = f"Data already exists for date: {session_date}, with visit number: {next_visit_num}"
+        #     messagebox.showinfo("Confirm Selection", msg)
+    
+    def load_existing_parquet(self, parquet_path, session_dict):
         
-                # Save the new session
-                singleData_df.to_parquet(save_path, index=False)
-            else:
-                # Extract visit numbers from filenames
-                visit_nums = []
-                for f in existing_files:
-                    fname = os.path.basename(f)
-                    # Format: patient_<id>_YYYY_MM_DD_visitX.parquet
-                    visit_str = fname.split("_")[-1]  # "visitX.parquet"
-                    visit_num = int(visit_str.replace("visit", "").replace(".parquet", ""))
-                    visit_nums.append(visit_num)
-    
-                next_visit_num = max(visit_nums)
-                msg = f"Data already exists for date: {session_date}, with visit number: {next_visit_num}"
-                messagebox.showinfo("Confirm Selection", msg)
+        # Find all parquet files recursively
+        parquet_files = glob.glob(os.path.join(parquet_path, "*.parquet"))
+
+        if not parquet_files:
+            
+            return session_dict   # Folder exists but no sessions yet, just return base_path
+
+        # Load all session files
+        df_proc = []
+        df_strat = []
+        session_info = {}  # list of tuples: (datetime, visit_num)
+
+        for file in parquet_files:
+            if "processed" in file:
+                # df_type = "processed"
+                df = pd.read_parquet(file)
+                df_proc.append(df)
+            elif "strategy" in file:
+                # df_type = "strategy"
+                df = pd.read_parquet(file)
+                df_strat.append(df)
+            else: 
+                # currently, nothing to do with series or single dataframe types
+                pass 
+            
+            # Extract date + visit number from filename
+            # Format: patient_<id>_YYYY_MM_DD_visitX.parquet
+            filename = os.path.basename(file)
+            parquet_base_name = filename.replace(".parquet", "")
+
+            try:
+                # ---- NEED TO FIGURE OUT HOW TO SEPARATE PARQUET FILE TYPES
+                parts       = parquet_base_name.split("_")
+                # parts = ["patient", "<id>", "YYYY", "MM", "DD", "visitX"]
+                year        = int(parts[2])
+                month       = int(parts[3])
+                day         = int(parts[4])
+                df_type     = parts[5]
+                visit_str   = parts[6]  # "visitX"
+                visit_num   = int(visit_str.replace("visit", ""))
+
+                session_date                    = datetime(year, month, day).strftime("%b%d-%Y")
+                session_info["session_date"]    = session_date
+                session_info["visit_num"]       = visit_num
+                # session_info.append((session_date, visit_num))
+
+            # TODO - need to update this in case there are issues here
+            except Exception:
+                # If parsing fails, skip metadata extraction
+                pass
+
+        # Combine all sessions into one DataFrame
+        processed_df = pd.concat(df_proc, ignore_index=True) if df_proc else None
+        strategy_df = pd.concat(df_strat, ignore_index=True) if df_strat else None
+        
+        session_dict["processed_df"]    = processed_df
+        session_dict["strategy_df"]     = strategy_df
+        session_dict["session_info"]    = session_info
+        
+        return session_dict
     
     def load_create_patient_data(self, site: str, patient_id: str):
         """
@@ -431,47 +511,7 @@ class DataHandling:
             os.makedirs(base_path, exist_ok=True)
             return session_dict   # No existing data yet, just return base_path
 
-        # Find all parquet files recursively
-        parquet_files = glob.glob(os.path.join(base_path, "*.parquet"))
-
-        if not parquet_files:
-            return session_dict   # Folder exists but no sessions yet, just return base_path
-
-        # Load all session files
-        dfs = []
-        session_info = []  # list of tuples: (datetime, visit_num)
-
-        for file in parquet_files:
-            df = pd.read_parquet(file)
-            dfs.append(df)
-
-            # Extract date + visit number from filename
-            # Format: patient_<id>_YYYY_MM_DD_visitX.parquet
-            filename = os.path.basename(file)
-            name_no_ext = filename.replace(".parquet", "")
-
-            try:
-                parts = name_no_ext.split("_")
-                # parts = ["patient", "<id>", "YYYY", "MM", "DD", "visitX"]
-                year = int(parts[2])
-                month = int(parts[3])
-                day = int(parts[4])
-                visit_str = parts[5]  # "visitX"
-                visit_num = int(visit_str.replace("visit", ""))
-
-                session_date = datetime(year, month, day)
-                session_info.append((session_date, visit_num))
-
-            # TODO - need to update this in case there are issues here
-            except Exception:
-                # If parsing fails, skip metadata extraction
-                pass
-
-        # Combine all sessions into one DataFrame
-        full_df = pd.concat(dfs, ignore_index=True) if dfs else None
-        
-        session_dict['full_df']         = full_df
-        session_dict['session_info']    = session_info
+        session_dict = DataHandling.load_existing_parquet(self, base_path, session_dict)
 
         return session_dict
     
@@ -503,14 +543,14 @@ class DataHandling:
         
         # get session data and info
         base_path = session_dict['base_path']
-        if 'full_df' in session_dict.keys():
-            existing_df = session_dict['full_df']
+        if "processed_df" in session_dict.keys():
+            existing_df = session_dict["processed_df"]
         else:
             existing_df = pd.DataFrame()
             
-        if 'session_info' in session_dict.keys():
+        if "session_info" in session_dict.keys():
             # TODO - where is the info supposed to go?
-            session_info = session_dict['session_info']
+            session_info = session_dict["session_info"]
         
         # loop through files to add to dataframes
         all_single = []
@@ -542,17 +582,15 @@ class DataHandling:
             
             # series dataframe
             df_series = pd.DataFrame(series_vals)
+            df_series["task"]   = trial
             df_series["file"]   = trial_fn
             df_series["side"]   = side
+            df_series["date"]   = gcd_dict["eval_date"]
             
             # list of dataframes - each file adds new dataframe
             all_single.append(df_single)
             all_series.append(df_series)
             tn += 1
-            
-        # need to save the new data before concatenating so subsequent visits don't have compounding dataframes of all prior data
-        # save dataframes to parquet files so can be loaded faster later
-        DataHandling.save_visit(self, all_single, gcd_dict["eval_date"], patient_id, base_path)
         
         # concatenate all trial dataframes to a single dataframe
         singleData_df = pd.concat(all_single, axis=0, ignore_index=True)
@@ -567,13 +605,18 @@ class DataHandling:
         
         seriesData_df = pd.concat(all_series, axis=0, ignore_index=True)
         
+        # need to save the new data before concatenating so subsequent visits don't have compounding dataframes of all prior data
+        # save dataframes to parquet files so can be loaded faster later
+        DataHandling.save_new_parquet(self, singleData_df, gcd_dict["eval_date"], patient_id, base_path, "single")
+        DataHandling.save_new_parquet(self, seriesData_df, gcd_dict["eval_date"], patient_id, base_path, "series")
+        
         # combine new and exisiting dataframes
-        full_df = pd.concat([existing_df, singleData_df], axis=0)
+        completeSingle_df = pd.concat([existing_df, singleData_df], axis=0)
             
         # return singleData_df, seriesData_df
-        return full_df, seriesData_df
+        return completeSingle_df, seriesData_df
     
-    def calc_dfVals(self, df, impaired_limb):
+    def calc_dfVals(self, df, impaired_limb, session_date, patient_id, base_path):
         '''
         SUMMARY. dataframe column data needs to have mean, sd, and difference
         values calculated
@@ -679,6 +722,8 @@ class DataHandling:
         # diff_rows = (
         #     diffs.reset_index().assign(side="diff")
         #     )
+        DataHandling.save_new_parquet(self, diff_df, session_date, patient_id, base_path, "processed")
+        DataHandling.save_new_parquet(self, strategy_df, session_date, patient_id, base_path, "strategy")
         
         return diff_df, strategy_df
 # ============================================================
@@ -694,7 +739,10 @@ class PlotManager:
         img_ax.imshow(img)
         img_ax.axis("off")
 
-    def plot_screen_DKV(self, extractedData_df, strategyData_df, cutpoints, patient_info, visit_info, page_index):
+    def close_plot():
+        matplotlib.pyplot.close()
+
+    def plot_screen(self, extractedData_df, strategyData_df, cutpoints, patient_info, visit_info, page_index):
         """
         Creates a 4x3 figure with right limb data on the left and left on the
         right, while symmetry calculations are in the middle column.
@@ -730,20 +778,87 @@ class PlotManager:
             y=0.88,
             ha="center"
         )
-        # footer
-        header_ax = fig.add_axes([0.05, 0.90, 0.92, 0.055])  # [left, bottom, width, height]
+        # header box
+        header_ax = fig.add_axes([0.05, 0.90, 0.78, 0.055])  # [left, bottom, width, height]
         header_ax.axis("off")
-        
-        header_ax.text(
-            0.01, 0.95,
-            f"Name: {patient_name}      ID: {patient_id}      visit date: {visit_date}\nDays out from injury: {days_out}\nInjury Side: {impaired_limb}",
-            ha="left", 
-            va="top", 
-            fontsize=12
-        )
         header_ax.add_patch(
-            plt.Rectangle((0,0),1,1, fill=True, facecolor='lightgray', edgecolor="black", linewidth=1)
+            plt.Rectangle((0, 0), 1, 1, fill=False, edgecolor="#009CA6", 
+                          linewidth=3, transform=header_ax.transAxes, clip_on=False)
         )
+        
+        # header_ax.add_patch(
+        #     plt.Rectangle((0.02, 0.02), 0.98, 0.98, fill=False, edgecolor="#009CA6", 
+        #                   linewidth=2, transform=header_ax.transAxes, clip_on=False)
+        # )
+        
+        # header_ax.add_patch(
+        #     plt.Rectangle((0.04, 0.04), 0.92, 0.92, fill=False, edgecolor="#C1272D", 
+        #                   linewidth=1, transform=header_ax.transAxes, clip_on=False)
+        # )
+        
+        # add Shriners logo
+        # ---- Image filepath
+        image_filenamepath = r"\\spr-fs-app01\collab\Mal_Share\ViconDatabase\Python Code\Sports_Screening_ReportGenerator\SC MAC logo.png"
+        PlotManager.add_image(image_filenamepath, fig, [0.81, 0.83, 0.15, 0.15])
+        
+        # Add name, id, visit date
+        # name
+        header_ax.text(
+            0.01, 0.95, "Name:",
+            ha="left", va="top", fontsize=12, fontweight="bold", color="#7B3F99" # purple
+        )
+        # ID
+        header_ax.text(
+            0.01, 0.95, "\nID:",
+            ha="left", va="top", fontsize=12, fontweight="bold", color="#009CA6" # teal
+        )
+        # Visit date
+        header_ax.text(
+            0.01, 0.95, "\n\nvisit date:",
+            ha="left", va="top", fontsize=12, fontweight="bold", color="#C1272D" # red
+        )
+        
+        # Add actual name, id, and visit_date
+        # name
+        header_ax.text(
+            0.18, 0.95, f"{patient_name}",
+            ha="left", va="top", fontsize=12, color="black"
+        )
+        # ID
+        header_ax.text(
+            0.18, 0.95, f"\n{patient_id}",
+            ha="left", va="top", fontsize=12, color="black"
+        )
+        # visit date
+        header_ax.text(
+            0.18, 0.95, f"\n\n{visit_date}",
+            ha="left", va="top", fontsize=12, color="black"
+        )
+        
+        # Add days out and injury side if injury side not "none"
+        if impaired_limb not in ["Left", "Right"]:
+            # days out
+            header_ax.text(
+                0.5, 0.95, "Days out from injury:",
+                ha="left", va="top", fontsize=12, fontweight="bold", color="#7B3F99" # purple
+            )
+            header_ax.text(
+                0.81, 0.95, f"{days_out}",
+                ha="left", va="top", fontsize=12, color="black"
+            )
+            # injury side
+            header_ax.text(
+                0.5, 0.95, "\nInjury Side:",
+                ha="left", va="top", fontsize=12, fontweight="bold", color="#009CA6" # teal
+            )
+            header_ax.text(
+                0.81, 0.95, f"\n{impaired_limb}",
+                ha="left", va="top", fontsize=12, color="black"
+            )
+        
+        # header_ax.add_patch(
+        #     plt.Rectangle((0,0),1,1, fill=True, facecolor='white', edgecolor="black", linewidth=2)
+        # )
     
         # -------------------------------
         # 2. Define row/measure mapping
@@ -790,7 +905,7 @@ class PlotManager:
             ax_screen = axes[rows[plot_idx], columns[plot_idx]]
             
             # -------------------------------
-            # 4A. Establish cut-point ranges for measure
+            # Establish cut-point ranges for measure
             # -------------------------------
             cutpoint = cutpoints[(cutpoints["metric"] == measure) & (cutpoints["task"] == task)]
             # need to convert to float, because int() can't be nan, but float can
@@ -799,7 +914,7 @@ class PlotManager:
             # cp_range    = float(cutpoint["range"].values[0])
             
             # -------------------------------
-            # 4A. Extract data from extractedData_df
+            # Extract data from extractedData_df
             # -------------------------------
             if "r" in impaired_limb.lower():
                 R_mean = extractedData_df[(extractedData_df["stat"] == "mean") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "impaired")][measure].values
@@ -823,7 +938,7 @@ class PlotManager:
                 dates = extractedData_df[(extractedData_df["stat"] == "mean") & (extractedData_df["task"] == task) & (extractedData_df["status"] == "impaired")]["date"].values
                 
             # -------------------------------
-            # 4B. Plot shaded cutpoint regions
+            # Plot shaded cutpoint regions
             # -------------------------------
             def add_shade(ax, cp, orientation):
                 
@@ -859,7 +974,7 @@ class PlotManager:
                         ax.axhspan(y_lower, cp[0], color="lightgray", alpha=0.4)
     
             # -------------------------------
-            # 4C. Plot bars (horizontal or vertical)
+            # Plot bars (horizontal or vertical)
             # -------------------------------
             def map_colors(colormap, n_visits):
                 color = []
@@ -902,7 +1017,7 @@ class PlotManager:
             plot_bars(ax_screen, x_position[1], R_mean, R_sd, red_cmap, [low, high], n_visits, "right", columns[plot_idx])
     
             # -------------------------------
-            # 4D. Scatter points
+            # Scatter points
             # -------------------------------
             def plot_scatter(ax, pts, cmap, orientation):
                 for i, visit_pts in enumerate(pts):
@@ -947,6 +1062,11 @@ class PlotManager:
                 plt.Rectangle((0,0),1,1, fill=True, facecolor="lightgray", edgecolor="black", linewidth=1)
             )
             
+            # add build-a-bear 
+            # ---- Image filepath
+            image_filenamepath = r"\\spr-fs-app01\collab\Mal_Share\ViconDatabase\Python Code\Sports_Screening_ReportGenerator\build-a-bear.png"
+            PlotManager.add_image(image_filenamepath, fig, [0.88, -0.03, 0.08, 0.15])
+            
             footer_ax.legend(
                 handles=legend_items,
                 loc="lower left",
@@ -956,7 +1076,7 @@ class PlotManager:
             )
             
         # -------------------------------
-        # 4E. Checks and X's
+        # Checks and X's
         # -------------------------------
         # ---- Checks and X's        
         # pull strategy data
@@ -974,6 +1094,7 @@ class PlotManager:
                 task_strategy = task_strategies[task_strategies["date"] == date][strategy].values
                 for ridx, result in enumerate(task_strategy):
                     # Hip behind heel
+                    # ---- Image filepath
                     if result:
                         image_filenamepath = r"\\spr-fs-app01\collab\Mal_Share\ViconDatabase\Python Code\Sports_Screening_ReportGenerator\img_green_check.png"
                     else:
@@ -997,7 +1118,7 @@ class PlotManager:
                         # add date
                         months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
                         dy = date.split("-")[0]
-                        mo = months[int(date.split("-")[1])]
+                        mo = months[int(date.split("-")[1]) - 1]
                         yr = date.split("-")[2]
                         
                         footer_ax.text(
@@ -1009,6 +1130,7 @@ class PlotManager:
                             )
         
         # add stick figures
+        # ---- Image filepath
         image_filenamepath = r"\\spr-fs-app01\collab\Mal_Share\ViconDatabase\Python Code\Sports_Screening_ReportGenerator\img_left_strategy.png"
         PlotManager.add_image(image_filenamepath, fig, [0.21, 0.075, 0.155, 0.21])
         
@@ -1529,6 +1651,7 @@ class ReportGenerator:
         # parent_folder = os.path.dirname(os.path.dirname(__file__))
         # os.chdir(parent_folder)
         # path = r"C:\Users\SWarshauer\OneDrive - Shriners Children's\Documents\GitHub\Sports_Screening_ReportGenerator/"
+        # ---- Image filepath
         path = r"\\spr-fs-app01.shriners.cc\collab\Mal_Share\ViconDatabase\Python Code\Sports_Screening_ReportGenerator/"
         
         # pull cutpoints and grab data that is needed
@@ -1585,75 +1708,17 @@ class ReportGenerator:
         #print(f'patient last name: {lastname}')
         return None
     
-    def generate_pdf(self, filename, patient_data, visits, tmp_dir="tmp_plots"):
-        # TODO Pretty sure all of this can be greatly simplified
-        '''
-        Likely only need to pull the figures that have already been created, 
-        then perhaps combine each page together.
-        
-        I'm currently unsure of the need to apply all this doc/story stuff here.
-        '''
-        os.makedirs(tmp_dir, exist_ok=True)
-
-        doc = SimpleDocTemplate(filename, pagesize=letter)
-        story = []
-
-        # ---------- Page 1 ----------
-        visit_date = visits[-1]["visit_date"] if visits else date.today().strftime("%Y-%m-%d")
-        days_out = self.data_handler.compute_days_out(visit_date, patient_data.get("surgery_date", ""))
-
-        header_text = (
-            f"Name: {patient_data.get('name','')} | "
-            f"ID: {patient_data.get('id','')} | "
-            f"Physician: {patient_data.get('physician','')} | "
-            f"Injury: {patient_data.get('injury','')} ({patient_data.get('injury_side','')})<br/>"
-            f"Age: {patient_data.get('age','')} | "
-            f"DOB: {patient_data.get('dob','')} | "
-            f"Visit Date: {visit_date} | "
-            f"Therapist: {patient_data.get('therapist','')}<br/>"
-            f"Surgery/Injury Date: {patient_data.get('surgery_date','')} | "
-            f"Days Out: {days_out if days_out is not None else '-'}"
-        )
-        story.append(Paragraph(header_text, self.styles["Normal"]))
-        story.append(Spacer(1, 0.3 * inch))
-
-        story.append(Paragraph("<b>Summary of Movements</b>", self.styles["Heading2"]))
-        story.append(Paragraph("Walk, Drop Jump, Heel Touch (reserved for later data).", self.styles["Normal"]))
-        story.append(Spacer(1, 6 * inch))  # leave room
-        story.append(PageBreak())
-
-        # ---------- Page 2 (dynamic_knee_valgus) ----------
-        small_header = (
-            f"Name: {patient_data.get('name','')} | "
-            f"ID: {patient_data.get('id','')} | "
-            f"Injury Side: {patient_data.get('injury_side','')} | "
-            f"Visit Date: {visit_date}"
-        )
-        story.append(Paragraph(small_header, self.styles["Normal"]))
-        story.append(Spacer(1, 0.2 * inch))
-        story.append(Paragraph("<b>Dynamic Knee Valgus Summary</b>", self.styles["Heading2"]))
-        story.append(Spacer(1, 0.2 * inch))
-
-        # ---- Add new plot_anatomical function here
-        dkv_fig = self.plot_manager.dkv_errbar_figure(visits)
-        dkv_path = os.path.join(tmp_dir, "dynamic_knee_valgus_page.png")
-        dkv_fig.savefig(dkv_path, dpi=150, bbox_inches="tight")
-        story.append(Image(dkv_path, width=7.5 * inch, height=9 * inch))
-        story.append(PageBreak())
-
-        # ---------- Page 3 (Hip vs Knee) ----------
-        story.append(Paragraph(small_header, self.styles["Normal"]))
-        story.append(Spacer(1, 0.2 * inch))
-        story.append(Paragraph("<b>Hip vs Knee Strategy Summary</b>", self.styles["Heading2"]))
-        story.append(Spacer(1, 0.2 * inch))
-
-        hip_fig = self.plot_manager.hks_errbar_figure(visits)
-        hip_path = os.path.join(tmp_dir, "hip_knee_page.png")
-        hip_fig.savefig(hip_path, dpi=150, bbox_inches="tight")
-        story.append(Image(hip_path, width=7.5 * inch, height=9 * inch))
-
-        doc.build(story)
-
+    def generate_pdf(self, save_filenamepath, figs):
+        # pull figure handles from the self.preview_figures list (figs)
+        with PdfPages(save_filenamepath) as pdf:
+            for name, fig in figs.items():
+                # Optional: ensure figure is sized for 8.5x11
+                fig.set_size_inches(8.5, 11)
+    
+                pdf.savefig(fig)   # Add the figure to the PDF
+                # fig.close()        # Optional: free memory
+    
+        print(f"Saved combined PDF to: {save_filenamepath}")
 
 # ============================================================
 #  Main Application
@@ -1663,7 +1728,7 @@ class PatientReportApp(tk.Tk):
         super().__init__()
 
         self.title(f"Patient Report Generator - Shriners Children's {site}")
-        self.geometry("855x515")
+        self.geometry("855x400")
 
         # Classes
         self.plot_manager           = PlotManager()
@@ -1755,6 +1820,7 @@ class PatientReportApp(tk.Tk):
         # --- Close preview window if open ---
         if self.plot_window is not None:
             try:
+                # matplotlib.pyplot.close()
                 self.plot_window.destroy()
             except:
                 pass
@@ -1784,13 +1850,20 @@ class PatientReportApp(tk.Tk):
         None
         '''
         # update UI data
-        self.update_data()
+        # ---- update data function move - doesn't work yet
+        # self.update_data()
         
         # ---- Should be checking for existing data here
         # Pull exisitng data if present from parquet files, pull base_path for patient data folder, and get previous sessiond date
         session_dict = DataHandling.load_create_patient_data(self, site, self.entry_id.get())
         
-        # TODO Need to fix error handling when no data is selected
+        # if "processed_df" not in session_dict.keys():
+        #     # TODO Need to fix error handling when no data is selected
+        #     gcd_data, py_data = self.data_handler.getData_dialog(session_dict)
+        # else:
+        #     gcd_data = []
+        #     py_data = []
+        # this needs to be done no matter what - hopefully existing data checks are taken care of properly after here
         gcd_data, py_data = self.data_handler.getData_dialog(session_dict)
         
         if py_data:
@@ -1799,10 +1872,16 @@ class PatientReportApp(tk.Tk):
         else:
             self.loaded_py_data = []
             
-        if gcd_data:
+        if gcd_data: # loaded gcd data
             # assign to self to use across the app
-            # ---- Pull and parse data - save to parquet
+            # ---- Pull and parse data - save to parquet inside parse_gcdData
             singleData_df, seriesData_df    = self.data_handler.parse_gcdData(gcd_data, self.entry_id.get(), session_dict)
+            
+            if "session_info" not in session_dict.keys():
+                # visit_num = None # filler for now
+                session_dict["session_info"] = {}
+                session_date = singleData_df["date"].unique().item()
+                session_dict["session_info"]["session_date"] = session_date
             
             # keep data accessible across classes
             self.loaded_gcd_data        = gcd_data
@@ -1811,15 +1890,45 @@ class PatientReportApp(tk.Tk):
             
             # Update data from UI - includes self.loaded_gcd_data
             # I think this should be done up above...
-            # self.update_data()
+            self.update_data()
             
             # now take dataframes and calculate needed metrics
             # impaired = self.patient_data["injury_side"]
             # ---- Calculate 
-            extractedData_df, strategy_df = self.data_handler.calc_dfVals(singleData_df, self.patient_data["injury_side"])
+            extractedData_df, strategy_df = self.data_handler.calc_dfVals(singleData_df, self.patient_data["injury_side"], session_dict["session_info"]["session_date"], self.entry_id.get(), session_dict["base_path"])
             # ---- !! NEW FOR SPENCER !!
             self.loaded_extractedData_df = extractedData_df
             self.loaded_strategyData_df = strategy_df
+        else:
+            
+            # ---- Pull and parse data - save to parquet inside parse_gcdData
+            # singleData_df, seriesData_df    = self.data_handler.parse_gcdData(gcd_data, self.entry_id.get(), session_dict)
+            # singleData_df, seriesData_df, extractedData_df, strategy_df = DataHandling.load_existing_parquet(self, session_dict["base_path"], session_dict)
+            # session_dict = DataHandling.load_existing_parquet(self, session_dict["base_path"], session_dict)
+            
+            # keep data accessible across classes
+            # this will be an issue maybe since didn't pull gcd_data - but don't need it?
+            # self.loaded_gcd_data        = gcd_data
+            # self.loaded_singleData_df   = singleData_df
+            # self.loaded_seriesData_df   = seriesData_df
+            
+            # now take dataframes and calculate needed metrics
+            # impaired = self.patient_data["injury_side"]
+            # ---- Calculate 
+            # extractedData_df, strategy_df = self.data_handler.calc_dfVals(singleData_df, self.patient_data["injury_side"], session_dict["session_date"], self.entry_id.get(), session_dict["sessionData_path"])
+            # ---- !! NEW FOR SPENCER !!
+            # self.loaded_extractedData_df = extractedData_df
+            # self.loaded_strategyData_df = strategy_df
+            
+            gcd_data, py_data = self.data_handler.getData_dialog(session_dict)
+            
+            self.loaded_extractedData_df = session_dict["processed_df"]
+            self.loaded_strategyData_df = session_dict["strategy_df"]
+            self.loaded_gcd_data = []
+            
+            # Update data from UI - includes self.loaded_gcd_data
+            # I think this should be done up above...
+            self.update_data()
             
             
     # --------------------------------------------------------
@@ -1967,20 +2076,21 @@ class PatientReportApp(tk.Tk):
         # --------------------------------------
         previewdata_frame = tk.LabelFrame(self, text='Preview Data')
         previewdata_frame.grid(row=1, column=1, sticky='nsew', padx=5, pady=5)
-        ttk.Button(previewdata_frame, text="Export Summary Report", width=65, command=lambda: self.call_ReportGeneratorfuncs("generate_summary")).grid(row=0, column=0, ipady=5, pady=5, padx=5, sticky="news")
-        ttk.Button(previewdata_frame, text="Open Plot Window", width=65, command=self.open_plot_window).grid(row=1, column=0, ipady=5, pady=5, padx=5, sticky="news")
+        # formerly Spencer's summary report page
+        # ttk.Button(previewdata_frame, text="Export Summary Report", width=65, command=lambda: self.call_ReportGeneratorfuncs("generate_summary")).grid(row=0, column=0, ipady=5, pady=5, padx=5, sticky="news")
+        ttk.Button(previewdata_frame, text="Preview and Export Report", width=65, command=self.open_plot_window).grid(row=0, column=0, rowspan=2, ipady=5, pady=5, padx=5, sticky="news")
         
         # -------- Generate report frame -------
         # --------------------------------------
-        generatereport_frame = tk.LabelFrame(self, text='Generate Report & Save')
-        generatereport_frame.grid(row=2, column=0, columnspan=2, sticky='nsew', padx=5, pady=5)
-        ttk.Button(generatereport_frame, text="Generate Full Report", width=135, command=self.export_pdf).grid(row=0, column=0, ipady=5, pady=5, padx=5, sticky="news")
-        ttk.Button(generatereport_frame, text="Export to Database", width=135, command=self.save_json_html).grid(row=1, column=0, columnspan=2, ipady=5, pady=5, padx=5, sticky="news")
+        # generatereport_frame = tk.LabelFrame(self, text='Generate Report & Save')
+        # generatereport_frame.grid(row=2, column=0, columnspan=2, sticky='nsew', padx=5, pady=5)
+        # # ttk.Button(generatereport_frame, text="Generate Full Report", width=135, command=self.export_pdf).grid(row=0, column=0, ipady=5, pady=5, padx=5, sticky="news")
+        # ttk.Button(generatereport_frame, text="Reformat Data to JSON", width=135, command=self.save_json_html).grid(row=0, column=0, columnspan=2, ipady=5, pady=5, padx=5, sticky="news")
         
         # ---------- Navigation frame ----------
         # --------------------------------------
         navigation_frame = tk.LabelFrame(self, text='Navigation')
-        navigation_frame.grid(row=3, column=0, columnspan=2, sticky='nsew', padx=5, pady=5)
+        navigation_frame.grid(row=2, column=0, columnspan=2, sticky='nsew', padx=5, pady=5)
         ttk.Button(navigation_frame, text="Reset to Default", width=135, command=self.reset_app).grid(row=0, column=0, columnspan=2, ipady=5, pady=5, padx=5, sticky="news")
         ttk.Button(navigation_frame, text="Close App", width=135, command=self.destroy).grid(row=5, column=0, rowspan=1, columnspan=2, ipady=5, pady=5, padx=5, sticky="news")
         
@@ -2026,18 +2136,19 @@ class PatientReportApp(tk.Tk):
         
         # self.refresh_preview()
         # messagebox.showinfo("Updated", "Patient and visit data updated.")
-        num_files = len(self.loaded_gcd_data)
-        if num_files > 0:
-            self.gcdstatus_label.config(text=f"✓ {num_files} GCD files loaded", foreground="green")
-        else:
-            self.gcdstatus_label.config(text="❌ NO GCD FILES LOADED", foreground="red")
-        
-        num_pydata = len(self.loaded_py_data)
-        if num_pydata > 0:
-            self.pystatus_label.config(text=f"✓ Patient info loaded from {num_pydata} file(s)", foreground="green")
-        else:
-            self.pystatus_label.config(text="⚠ Patient info added manually")
+        if self.loaded_gcd_data:
+            num_files = len(self.loaded_gcd_data)
+            if num_files > 0:
+                self.gcdstatus_label.config(text=f"✓ {num_files} GCD files loaded", foreground="green")
+            else:
+                self.gcdstatus_label.config(text="❌ NO GCD FILES LOADED", foreground="red")
             
+            num_pydata = len(self.loaded_py_data)
+            if num_pydata > 0:
+                self.pystatus_label.config(text=f"✓ Patient info loaded from {num_pydata} file(s)", foreground="green")
+            else:
+                self.pystatus_label.config(text="⚠ Patient info added manually")
+                
         # self.status_label.after(1500, lambda: self.status_label.config(text=""))
 
     # def refresh_preview(self):
@@ -2147,7 +2258,7 @@ class PatientReportApp(tk.Tk):
 
 
     def show_next_page(self):
-        if self.current_preview_page < 3:
+        if self.current_preview_page < len(self.preview_figures):
             self.show_preview_page(self.current_preview_page + 1)
 
 
@@ -2160,36 +2271,37 @@ class PatientReportApp(tk.Tk):
         """Generate matplotlib figures for all 3 pages."""
     
         # PAGE 1 — Summary page (simple text figure)
-        fig1 = Figure(figsize=(8.5, 11))
-        ax1 = fig1.add_subplot(111)
-        ax1.axis("off")
+        # fig1 = Figure(figsize=(8.5, 11))
+        # ax1 = fig1.add_subplot(111)
+        # ax1.axis("off")
     
+        # text = (
+        #     "Just a place holder"
+        #     )
+    
+        # ax1.text(0.05, 0.95, text, va="top", fontsize=12)
+        # self.preview_figures[1] = fig1
+        
+        # pull visit info
         visit_date = self.visits[-1]["visit_date"]
         days_out = self.data_handler.compute_days_out(
             visit_date, self.patient_data.get("surgery_date", "")
         )
         
         visit_info = [visit_date, days_out]
-    
-        text = (
-            "Just a place holder"
-            )
-    
-        ax1.text(0.05, 0.95, text, va="top", fontsize=12)
-        self.preview_figures[1] = fig1
-    
+        
         # PAGE 2 — DKV plots
         # ---- Screen v. anatomical
-        # self.preview_figures[2] = self.plot_manager.plot_anatomical_DKV(self.loaded_extractedData_df, cutPoint_ranges, self.patient_data, visit_info)
-        # self.preview_figures[2] = self.plot_manager.plot_screen_DKV(self.loaded_extractedData_df, cutPoint_ranges, self.patient_data, visit_info)
-        self.preview_figures[2] = self.plot_manager.plot_screen_DKV(self.loaded_extractedData_df, self.loaded_strategyData_df, cutPoint_ranges, self.patient_data, visit_info, 0)
+        # self.preview_figures[1] = self.plot_manager.plot_anatomical_DKV(self.loaded_extractedData_df, cutPoint_ranges, self.patient_data, visit_info)
+        self.preview_figures[1] = self.plot_manager.plot_screen(self.loaded_extractedData_df, self.loaded_strategyData_df, cutPoint_ranges, self.patient_data, visit_info, 0)
 
         # self.preview_figures[2] = self.plot_manager.dkv_errbar_figure(self.visits)
     
         # PAGE 3 — Hip vs Knee plots
         # self.preview_figures[3] = self.plot_manager.hks_errbar_figure(self.visits)
-        self.preview_figures[3] = self.plot_manager.plot_screen_DKV(self.loaded_extractedData_df, self.loaded_strategyData_df, cutPoint_ranges, self.patient_data, visit_info, 1)
+        self.preview_figures[2] = self.plot_manager.plot_screen(self.loaded_extractedData_df, self.loaded_strategyData_df, cutPoint_ranges, self.patient_data, visit_info, 1)
 
+        return self.preview_figures
 
     def open_plot_window(self):
         # If already open, bring to front
@@ -2217,8 +2329,15 @@ class PatientReportApp(tk.Tk):
         ttk.Button(btn_frame, text="Next Page",
                    command=self.show_next_page).pack(side="left", padx=5)
     
+        # ttk.Button(btn_frame, text="Close Preview",
+        #            command=self.plot_window.destroy).pack(side="right", padx=5)
+        # ---- Close Preview close plot
         ttk.Button(btn_frame, text="Close Preview",
-                   command=self.plot_window.destroy).pack(side="right", padx=5)
+                   command=lambda: (PlotManager.close_plot(), self.plot_window.destory)).pack(side="right", padx=5)
+        
+        # ---- Generate pdf button in preview
+        ttk.Button(btn_frame, text="Generate PDF Report",
+                   command=self.export_pdf).pack(side="right", padx=5)
     
         # --- Canvas area for figure ---
         self.preview_canvas_frame = ttk.Frame(self.plot_window)
@@ -2236,16 +2355,18 @@ class PatientReportApp(tk.Tk):
     # --------------------------------------------------------
     def export_pdf(self):
         self.update_data()
-        filename = filedialog.asksaveasfilename(
+        save_filenamepath = filedialog.asksaveasfilename(
             defaultextension=".pdf",
             filetypes=[("PDF Files", "*.pdf")]
         )
-        if not filename:
+        if not save_filenamepath:
+            # TODO ---- add error handling here
             return
 
         try:
-            self.report_generator.generate_pdf(filename, self.patient_data, self.visits)
-            messagebox.showinfo("PDF Export", f"PDF saved to {filename}")
+            # self.report_generator.generate_pdf(filename, self.patient_data, self.visits)
+            self.report_generator.generate_pdf(save_filenamepath, self.preview_figures)
+            messagebox.showinfo("PDF Export", f"PDF saved to {save_filenamepath}")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to generate PDF:\n{e}")
 
